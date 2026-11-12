@@ -37,6 +37,12 @@ WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_APPWINDOW = 0x00040000
 WS_EX_NOACTIVATE = 0x08000000
 WS_EX_LAYERED = 0x00080000
+WS_EX_DLGMODALFRAME = 0x00000001
+WS_EX_WINDOWEDGE = 0x00000100
+WS_EX_CLIENTEDGE = 0x00000200
+WS_EX_STATICEDGE = 0x00020000
+WS_EX_COMPOSITED = 0x02000000
+WS_EX_NOREDIRECTIONBITMAP = 0x00200000
 LWA_ALPHA = 0x2
 
 SWP_NOSIZE = 0x0001
@@ -44,8 +50,21 @@ SWP_NOMOVE = 0x0002
 SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 SWP_FRAMECHANGED = 0x0020
+SW_HIDE = 0
+SW_SHOW = 5
+SW_SHOWNOACTIVATE = 4
 SW_SHOWNA = 8
 GA_PARENT = 1
+HWND_BOTTOM = 1
+GW_HWNDLAST = 1
+GW_HWNDNEXT = 2
+GW_CHILD = 5
+
+# Job objects (child processes die with Wallcraft)
+JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+JOB_OBJECT_EXTENDED_LIMIT_INFORMATION_CLASS = 9
+PROCESS_SET_QUOTA = 0x0100
+PROCESS_TERMINATE = 0x0001
 
 RDW_INVALIDATE = 0x0001
 RDW_ERASE = 0x0004
@@ -94,6 +113,37 @@ class SYSTEM_POWER_STATUS(ctypes.Structure):
     ]
 
 
+class JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("PerProcessUserTimeLimit", ctypes.c_int64),
+        ("PerJobUserTimeLimit", ctypes.c_int64),
+        ("LimitFlags", wt.DWORD),
+        ("MinimumWorkingSetSize", ctypes.c_size_t),
+        ("MaximumWorkingSetSize", ctypes.c_size_t),
+        ("ActiveProcessLimit", wt.DWORD),
+        ("Affinity", ctypes.c_size_t),
+        ("PriorityClass", wt.DWORD),
+        ("SchedulingClass", wt.DWORD),
+    ]
+
+
+class IO_COUNTERS(ctypes.Structure):
+    _fields_ = [(name, ctypes.c_uint64) for name in (
+        "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+        "ReadTransferCount", "WriteTransferCount", "OtherTransferCount")]
+
+
+class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+    _fields_ = [
+        ("BasicLimitInformation", JOBOBJECT_BASIC_LIMIT_INFORMATION),
+        ("IoInfo", IO_COUNTERS),
+        ("ProcessMemoryLimit", ctypes.c_size_t),
+        ("JobMemoryLimit", ctypes.c_size_t),
+        ("PeakProcessMemoryUsed", ctypes.c_size_t),
+        ("PeakJobMemoryUsed", ctypes.c_size_t),
+    ]
+
+
 class GUID(ctypes.Structure):
     _fields_ = [
         ("Data1", ctypes.c_ulong),
@@ -128,6 +178,7 @@ SendMessageTimeoutW = _fn(
 EnumWindows = _fn(user32, "EnumWindows", wt.BOOL, WNDENUMPROC, wt.LPARAM)
 SetParent = _fn(user32, "SetParent", wt.HWND, wt.HWND, wt.HWND)
 GetAncestor = _fn(user32, "GetAncestor", wt.HWND, wt.HWND, wt.UINT)
+GetWindow = _fn(user32, "GetWindow", wt.HWND, wt.HWND, wt.UINT)
 IsWindow = _fn(user32, "IsWindow", wt.BOOL, wt.HWND)
 IsWindowVisible = _fn(user32, "IsWindowVisible", wt.BOOL, wt.HWND)
 IsIconic = _fn(user32, "IsIconic", wt.BOOL, wt.HWND)
@@ -166,6 +217,12 @@ else:  # 32-bit Windows exports only the non-Ptr variants
 # kernel32
 GetSystemPowerStatus = _fn(kernel32, "GetSystemPowerStatus", wt.BOOL, ctypes.POINTER(SYSTEM_POWER_STATUS))
 GetCurrentProcessId = _fn(kernel32, "GetCurrentProcessId", wt.DWORD)
+CreateJobObjectW = _fn(kernel32, "CreateJobObjectW", wt.HANDLE, ctypes.c_void_p, wt.LPCWSTR)
+SetInformationJobObject = _fn(kernel32, "SetInformationJobObject", wt.BOOL, wt.HANDLE, ctypes.c_int,
+                              ctypes.c_void_p, wt.DWORD)
+AssignProcessToJobObject = _fn(kernel32, "AssignProcessToJobObject", wt.BOOL, wt.HANDLE, wt.HANDLE)
+OpenProcess = _fn(kernel32, "OpenProcess", wt.HANDLE, wt.DWORD, wt.BOOL, wt.DWORD)
+CloseHandle = _fn(kernel32, "CloseHandle", wt.BOOL, wt.HANDLE)
 
 # shell32
 SHQueryUserNotificationState = _fn(shell32, "SHQueryUserNotificationState", HRESULT_T, ctypes.POINTER(ctypes.c_int))
@@ -197,6 +254,22 @@ def window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
     if not GetWindowRect(hwnd, ctypes.byref(r)):
         return None
     return (r.left, r.top, r.right - r.left, r.bottom - r.top)
+
+
+def ex_style(hwnd: int) -> int:
+    return GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & 0xFFFFFFFF
+
+
+def style(hwnd: int) -> int:
+    return GetWindowLongPtrW(hwnd, GWL_STYLE) & 0xFFFFFFFF
+
+
+def set_style(hwnd: int, value: int) -> None:
+    SetWindowLongPtrW(hwnd, GWL_STYLE, ctypes.c_ssize_t(value & 0xFFFFFFFF).value)
+
+
+def set_ex_style(hwnd: int, value: int) -> None:
+    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ctypes.c_ssize_t(value & 0xFFFFFFFF).value)
 
 
 def window_pid(hwnd: int) -> int:

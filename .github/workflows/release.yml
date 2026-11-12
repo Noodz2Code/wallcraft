@@ -43,9 +43,15 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
 
+      - name: Download mpv (live wallpaper player)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fetch_mpv.py
+
       - name: Build portable exe
         env:
           WALLCRAFT_ONEFILE: "1"
+          WALLCRAFT_REQUIRE_MPV: "1"
         run: python -m PyInstaller --noconfirm --clean wallcraft.spec
 
       - name: Smoke-test the packaged exe
@@ -59,6 +65,7 @@ jobs:
       - name: Build folder version
         env:
           WALLCRAFT_ONEFILE: "0"
+          WALLCRAFT_REQUIRE_MPV: "1"
         run: python -m PyInstaller --noconfirm wallcraft.spec
 
       - name: Install Inno Setup

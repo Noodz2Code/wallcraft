@@ -51,9 +51,14 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: python -m pip install -r requirements-dev.txt
+      - name: Download mpv (live wallpaper player)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/fetch_mpv.py
       - name: Build portable exe
         env:
           WALLCRAFT_ONEFILE: "1"
+          WALLCRAFT_REQUIRE_MPV: "1"
         run: python -m PyInstaller --noconfirm --clean wallcraft.spec
       - name: Smoke-test the packaged exe
         shell: pwsh

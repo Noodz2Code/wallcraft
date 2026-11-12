@@ -38,6 +38,8 @@ build/
 dist/
 release/
 installer/Output/
+# Third-party binaries downloaded at build time (scripts/fetch_mpv.py)
+vendor/
 *.manifest
 # Note: wallcraft.spec is the real build recipe and IS committed.
 # Many Python templates ignore *.spec; don't add that rule here.

@@ -27,6 +27,10 @@ python -m pip install --upgrade pip | Out-Null
 python -m pip install -r requirements-dev.txt
 if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 
+python scripts\fetch_mpv.py
+if ($LASTEXITCODE -ne 0) { throw "Downloading mpv failed" }
+$env:WALLCRAFT_REQUIRE_MPV = "1"
+
 if (-not $SkipTests) {
     python -m pytest -q
     if ($LASTEXITCODE -ne 0) { throw "Tests failed" }

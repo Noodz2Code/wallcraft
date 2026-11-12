@@ -171,23 +171,6 @@ def get_wallpaper(monitor_id: str | None) -> str | None:
     return None
 
 
-def reapply_all() -> None:
-    """Set every monitor's wallpaper again so Explorer repaints the desktop."""
-    try:
-        with DesktopWallpaper() as dw:
-            for mon in dw.monitors():
-                current = dw.get_wallpaper(mon.path)
-                if current:
-                    dw.set_wallpaper(mon.path, current)
-            return
-    except OSError:
-        pass
-    current = get_wallpaper(None)
-    if current:
-        buf = ctypes.create_unicode_buffer(current)
-        win32.SystemParametersInfoW(win32.SPI_SETDESKWALLPAPER, 0, buf, win32.SPIF_SENDCHANGE)
-
-
 def _spi_set(path: str, fit: FitMode) -> None:
     style, tile = _REG_STYLE[fit]
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Control Panel\Desktop", 0, winreg.KEY_SET_VALUE) as key:

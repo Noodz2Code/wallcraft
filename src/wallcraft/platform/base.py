@@ -64,6 +64,13 @@ class Backend(ABC):
     def refresh_desktop(self) -> None:
         """Repaint the desktop after live windows go away."""
 
+    def find_process_window(self, pid: int, class_name: str = "mpv") -> int | None:
+        """Top-level window of a child process (used to embed the mpv player)."""
+        return None
+
+    def adopt_child_process(self, pid: int) -> None:
+        """Make a child process exit together with Wallcraft, even after a crash."""
+
     # Misc ----------------------------------------------------------------- #
     def autostart_enabled(self) -> bool:
         return False

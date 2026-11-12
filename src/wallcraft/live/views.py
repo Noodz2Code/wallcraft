@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, QUrl
+from PySide6.QtCore import QObject, QPoint, QRect, QSize, Qt, QTimer, QUrl, Signal
 from PySide6.QtGui import QColor, QImageReader, QMovie, QPainter, QPalette
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
@@ -177,3 +177,63 @@ class LiveWindow(QWidget):
         self._view.shutdown()
         self.hide()
         self.deleteLater()
+
+
+class QtPlayer(QObject):
+    """Fallback player that renders inside Wallcraft's own process.
+
+    Used for animated WebP, during development on non-Windows systems, and whenever mpv
+    is unavailable or can't play a particular file. Same interface as MpvPlayer.
+    """
+
+    ready = Signal()
+    failed = Signal(str)
+    exited = Signal()
+
+    def __init__(self, item: MediaItem, fit: FitMode, embedded: bool, title: str,
+                 parent: QObject | None = None) -> None:
+        super().__init__(parent)
+        self.item = item
+        self._embedded = embedded
+        self._win = LiveWindow(item, embedded=embedded, title=title)
+        self._win.set_fit(fit)
+
+    @property
+    def hwnd(self) -> int | None:
+        return int(self._win.winId()) if self._embedded else None
+
+    @property
+    def playing(self) -> bool:
+        return self._win.playing
+
+    def alive(self) -> bool:
+        return True
+
+    def start(self) -> None:
+        if self._embedded:
+            self._win.winId()  # create the native window so it can be attached
+        else:
+            self._win.resize(960, 540)
+            self._win.show()
+        QTimer.singleShot(0, self.ready.emit)
+
+    def show_embedded(self) -> None:
+        self._win.show()
+
+    def play(self) -> None:
+        self._win.play()
+
+    def pause(self) -> None:
+        self._win.pause()
+
+    def set_fit(self, fit: FitMode) -> None:
+        self._win.set_fit(fit)
+
+    def set_audio(self, enabled: bool, volume: int) -> None:
+        self._win.set_audio(enabled, volume)
+
+    def shutdown(self) -> None:
+        self._win.shutdown()
+
+    def wait_closed(self, timeout_ms: int = 0) -> None:
+        pass

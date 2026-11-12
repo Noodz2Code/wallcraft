@@ -33,7 +33,8 @@
   - **Animated images:** GIF and animated WebP (a still WebP is treated as a normal image)
 
   \*AV1 needs a graphics card with AV1 decoding (most from 2020 onward).
-- Hardware video decoding through Qt Multimedia / FFmpeg.
+- Works like Lively Wallpaper: each live wallpaper plays in its own [mpv](https://mpv.io) process with hardware video decoding, placed behind the desktop icons. Supports Windows 10 and Windows 11, including the 24H2 desktop.
+- If a player crashes, or Explorer restarts, Wallcraft restarts the player and puts it back in place.
 - A still frame from the video is set as the regular Windows wallpaper underneath, so the desktop never goes blank when playback stops or Wallcraft quits.
 - Muted by default. With several monitors, only one plays sound.
 
@@ -104,7 +105,7 @@ Closing the window keeps Wallcraft running in the tray. Choose **Quit Wallcraft*
 
 ## Troubleshooting
 
-- **The live wallpaper doesn't show, or vanished.** Wallcraft re-attaches automatically after Explorer restarts. If it still isn't visible, restart Wallcraft from the tray. Then open an issue with your Windows version (`winver`) and the log file attached.
+- **The live wallpaper doesn't show, or vanished.** Wallcraft re-attaches automatically after Explorer restarts. If it still isn't visible, restart Wallcraft from the tray. If that doesn't help, open an issue with your Windows version (`winver`) and the log file attached. The log records which desktop layout was detected and every attach attempt.
 - **The wallpaper looks blurry.** Turn on *Settings → Keep JPEG wallpapers at full quality* (Windows re-compresses JPEGs by default).
 - **A video doesn't play.** Check the codec is in the list above. AV1 needs a graphics card that decodes it. The log file shows the decoder error.
 
@@ -121,7 +122,10 @@ pip install -r requirements-dev.txt
 
 python -m wallcraft            # run from source
 python -m pytest               # run the tests
+python scripts\fetch_mpv.py   # optional: download mpv into vendor\mpv for live wallpapers
 ```
+
+Without mpv, live wallpapers use a simpler built-in player. Builds always include mpv.
 
 Build the executables:
 
@@ -151,14 +155,15 @@ src/wallcraft/
 ├── slideshow.py         playlist ordering
 ├── rules.py             performance/battery rules
 ├── library.py           media types and folder scanning
-├── live/                video and GIF players, one window per monitor
+├── live/                mpv player processes (and a built-in fallback), one per monitor
 ├── services/            library, thumbnails, video still frames, config store
 ├── platform/windows/    Win32 via ctypes: IDesktopWallpaper, WorkerW embedding, power, theme
 └── ui/                  Qt (PySide6) interface
 ```
 
 - **Static wallpapers** use the `IDesktopWallpaper` COM interface (per-monitor), falling back to `SystemParametersInfo`.
-- **Live wallpapers** use the WorkerW technique: Wallcraft asks Explorer to create a window layer between the wallpaper and the icons, then places its video windows in that layer. Both the classic layout and the Windows 11 24H2 layout are handled.
+- **Live wallpapers** work like Lively Wallpaper. Each one runs in its own mpv process (`live/mpv.py`), controlled through mpv's JSON IPC (play, pause, volume, fit). Wallcraft asks Explorer to create a window layer (WorkerW) between the wallpaper and the icons and moves mpv's window into it (`platform/windows/desktop.py`). Both the classic layout and the Windows 11 24H2 layout are handled, following Lively's implementation.
+- A Windows job object ends the player processes together with Wallcraft, even after a crash.
 - All Windows calls go through `ctypes`, so there are no compiled extensions or pywin32 dependency.
 
 ## Contributing
@@ -167,4 +172,4 @@ Bug reports, ideas and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBU
 
 ## License
 
-[MIT](LICENSE)
+Wallcraft is [MIT](LICENSE) licensed. Builds bundle third-party software under its own licenses, including mpv (GPL-2.0-or-later). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

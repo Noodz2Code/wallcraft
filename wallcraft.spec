@@ -15,6 +15,12 @@ PKG = SRC / "wallcraft"
 VERSION = re.search(r'__version__\s*=\s*"([^"]+)"', (PKG / "__init__.py").read_text()).group(1)
 ONEFILE = os.environ.get("WALLCRAFT_ONEFILE", "1") == "1"
 
+# mpv plays live wallpapers in its own process (fetched by scripts/fetch_mpv.py).
+MPV_DIR = ROOT / "vendor" / "mpv"
+if os.environ.get("WALLCRAFT_REQUIRE_MPV") == "1" and not (MPV_DIR / "mpv.exe").is_file():
+    raise SystemExit("vendor/mpv/mpv.exe is missing. Run: python scripts/fetch_mpv.py")
+MPV_DATAS = [(str(MPV_DIR), "mpv")] if MPV_DIR.is_dir() else []
+
 
 def windows_version_file():
     """Write the Windows file-properties resource (version, product name) for the exe."""
@@ -71,7 +77,7 @@ a = Analysis(  # noqa: F821
     [str(PKG / "__main__.py")],
     pathex=[str(SRC)],
     binaries=[],
-    datas=[(str(PKG / "resources"), "wallcraft/resources")],
+    datas=[(str(PKG / "resources"), "wallcraft/resources"), *MPV_DATAS],
     hiddenimports=["PySide6.QtMultimedia", "PySide6.QtMultimediaWidgets", "PySide6.QtNetwork"],
     excludes=EXCLUDES,
     noarchive=False,

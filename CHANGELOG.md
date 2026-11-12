@@ -4,6 +4,25 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-13
+
+### Changed
+- **New live wallpaper engine, modelled on Lively Wallpaper.** Each live wallpaper now plays in its own
+  [mpv](https://mpv.io) process, which Wallcraft places behind the desktop icons and controls remotely.
+  Video decoding and drawing no longer happen inside Wallcraft's own window, which is what kept live
+  wallpapers from showing on some systems.
+- Desktop embedding follows Lively's handling of both desktop layouts, including Windows 11 24H2: the layout
+  is detected from Explorer's window styles, and the icon/wallpaper stacking order is repaired whenever
+  Explorer rebuilds its background layer.
+- When switching to a live wallpaper, the old video is closed and the still frame is set *before* the new
+  video is attached. Changing the static wallpaper while a video is attached breaks it on 24H2.
+
+### Added
+- mpv is bundled with every build (downloaded and checksum-verified by `scripts/fetch_mpv.py`).
+- Player processes are tied to Wallcraft with a Windows job object, so they never keep running after
+  Wallcraft exits or crashes.
+- Crashed or detached players restart automatically. A file mpv can't play falls back to the built-in player.
+
 ## [0.1.1] - 2026-11-13
 
 ### Added

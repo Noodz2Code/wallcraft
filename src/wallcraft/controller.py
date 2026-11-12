@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from datetime import datetime
+from functools import partial
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
@@ -59,6 +60,7 @@ class Controller(QObject):
         self._os_theme = "light"
         self._user_paused = False
         self._applied_sig: tuple | None = None
+        self._apply_token = 0
         self._slideshow = Slideshow()
         self._started = False
 
@@ -111,7 +113,7 @@ class Controller(QObject):
     def shutdown(self) -> None:
         self._tick.stop()
         self._poll.stop()
-        self.live.stop_all()
+        self.live.stop_all(wait=True)
         self.store.save_now()
 
     def _watch_screen(self, screen, initial: bool = False) -> None:
@@ -322,25 +324,54 @@ class Controller(QObject):
                 if item is not None:
                     lives[mid] = item
 
-        # Under each live wallpaper, set its still frame as the real Windows wallpaper. When the
-        # frame is cached, do it now (before the video window attaches) so Explorer's wallpaper
-        # fade doesn't run over a freshly embedded window.
+        # Order matters on Windows 11 24H2, where changing the static wallpaper destroys the layer
+        # a video sits in (see platform/windows/desktop.py). So, like Lively:
+        #   1. close live wallpapers that are going away (unchanged ones keep playing),
+        #   2. set static wallpapers, plus each video's still frame as the wallpaper under it,
+        #   3. only then start and attach the new videos.
+        keep = {mid: item for mid, item in lives.items() if self.live.current_item(mid) == item}
+        self.live.set_assignments(keep, self.monitors, fit)
+
         groups: dict[str, list[str]] = {}
         for mid, item in lives.items():
-            groups.setdefault(item.path, []).append(mid)
+            if mid not in keep:
+                groups.setdefault(item.path, []).append(mid)
+        pending: dict[str, list[str]] = {}
         for path, mids in groups.items():
             cached = self.posters.cached(path)
             if cached:
                 statics.update({mid: cached for mid in mids})
             else:
-                self.posters.request(path, lambda poster, p=path, m=tuple(mids): self._on_poster(p, m, poster))
+                pending[path] = mids
         self._set_statics(statics)
 
         self.live.set_audio(self.cfg.performance.muted, self.cfg.performance.volume)
-        self.live.set_assignments(lives, self.monitors, fit)
         self.current = per
         log.info("Applied wallpapers: %s", {k: os.path.basename(v) for k, v in per.items()})
         self.wallpaperChanged.emit()
+
+        self._apply_token += 1
+        token = self._apply_token
+        if not pending:
+            self._start_live(lives, fit)
+            return
+        remaining = set(pending)
+
+        def on_poster(path: str, poster: str | None) -> None:
+            if token != self._apply_token:
+                return  # a newer wallpaper was applied meanwhile
+            remaining.discard(path)
+            if poster:
+                self._set_statics({mid: poster for mid in pending[path]})
+            if not remaining:
+                self._start_live(lives, fit)
+
+        for path in pending:
+            # Always answers, with None after a timeout, so videos start even without a still frame.
+            self.posters.request(path, partial(on_poster, path))
+
+    def _start_live(self, lives: dict[str, MediaItem], fit) -> None:
+        self.live.set_assignments(lives, self.monitors, fit)
         self._poll_system()
 
     def _set_statics(self, assign: dict[str, str]) -> None:
@@ -358,13 +389,6 @@ class Controller(QObject):
         except OSError as exc:
             log.error("Setting wallpaper failed: %s", exc)
             self.message.emit(f"Couldn't set wallpaper: {exc}")
-
-    def _on_poster(self, path: str, mids: tuple[str, ...], poster: str | None) -> None:
-        if not poster:
-            return
-        still_live = [mid for mid in mids if self.current.get(mid) == path]
-        if still_live:
-            self._set_statics({mid: poster for mid in still_live})
 
     # Rules ---------------------------------------------------------------------- #
     def _poll_system(self) -> None:
@@ -411,7 +435,7 @@ class Controller(QObject):
                 continue
             d = self.decisions.get(mon.id)
             reason = f" ({', '.join(d.reasons)})" if d and d.reasons and s != "playing" else ""
-            label = {"playing": "Playing", "paused": "Paused", "stopped": "Stopped"}[s]
+            label = {"playing": "Playing", "paused": "Paused", "stopped": "Stopped", "starting": "Starting"}[s]
             prefix = f"{mon.name}: " if len(self.monitors) > 1 else ""
             states.append(f"{prefix}{label}{reason}")
         return " · ".join(states) or "No live wallpaper active"

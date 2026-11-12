@@ -12,7 +12,7 @@ from ...library import NATIVE_IMAGE_EXTS
 from ...paths import converted_dir
 from ...rules import SystemState
 from ..base import Backend, Monitor
-from . import autostart, desktop, system, theme, wallpaper, win32
+from . import autostart, desktop, jobs, system, theme, wallpaper, win32
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +26,7 @@ class WindowsBackend(Backend):
 
     def __init__(self) -> None:
         self._host: desktop.DesktopHost | None = None
+        self._job: jobs.KillOnCloseJob | None = None
 
     # Monitors ------------------------------------------------------------- #
     def list_monitors(self) -> list[Monitor]:
@@ -97,17 +98,37 @@ class WindowsBackend(Backend):
 
     def ensure_live_window(self, hwnd: int, monitor: Monitor) -> bool:
         host = self._host
-        if host is None or not host.alive():
-            self._host = None
+        if host is None or not win32.IsWindow(host.progman):
+            self._host = None  # Explorer restarted
             return False
+        if not host.alive():
+            if not host.raised:
+                self._host = None  # legacy WorkerW gone, and our child windows with it
+                return False
+            # 24H2: Explorer recreated its WorkerW (e.g. after a wallpaper change). Our window is a
+            # child of Progman and survives; pick up the new WorkerW and repair the z-order.
+            self._host = host = desktop.find_desktop_host()
+            if host is None:
+                return False
         return desktop.ensure(hwnd, monitor.rect, host)
 
     def refresh_desktop(self) -> None:
-        desktop.redraw(self._host)
-        try:
-            wallpaper.reapply_all()
-        except OSError as exc:
-            log.debug("Desktop refresh failed: %s", exc)
+        desktop.refresh_wallpaper(self._host)
+
+    def find_process_window(self, pid: int, class_name: str = "mpv") -> int | None:
+        for hwnd in win32.enum_windows():
+            if win32.window_pid(hwnd) == pid and win32.class_name(hwnd) == class_name:
+                return hwnd
+        return None
+
+    def adopt_child_process(self, pid: int) -> None:
+        if self._job is None:
+            try:
+                self._job = jobs.KillOnCloseJob()
+            except OSError as exc:
+                log.warning("Could not create job object: %s", exc)
+                return
+        self._job.assign(pid)
 
     # Misc ----------------------------------------------------------------- #
     def autostart_enabled(self) -> bool:

@@ -84,6 +84,19 @@ def _smoke_check() -> int:
     if not {"jpeg", "png", "gif", "webp"} <= images:
         log.error("Smoke test: image format plugins missing")
         return 4
+    if getattr(sys, "frozen", False) and sys.platform == "win32":
+        from .live.mpv import CORE_OPTIONS, EMBEDDED_OPTIONS, find_mpv, option_name, supported_options
+
+        mpv = find_mpv()
+        if not mpv:
+            log.error("Smoke test: bundled mpv not found")
+            return 5
+        supported = supported_options(mpv)
+        missing = [a for a in CORE_OPTIONS + EMBEDDED_OPTIONS if option_name(a) not in supported]
+        if missing:
+            log.error("Smoke test: mpv at %s doesn't accept %s", mpv, missing)
+            return 6
+        log.info("Smoke test: mpv OK (%s, %d options)", mpv, len(supported))
     return 0
 
 
