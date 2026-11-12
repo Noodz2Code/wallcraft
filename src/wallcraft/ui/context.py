@@ -1,0 +1,20 @@
+"""Shared services handed to every UI component."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from ..controller import Controller
+from ..platform.base import Backend
+from ..services.config_store import ConfigStore
+from ..services.library_service import LibraryService
+from ..services.thumbnails import ThumbnailCache
+
+
+@dataclass
+class AppContext:
+    store: ConfigStore
+    backend: Backend
+    library: LibraryService
+    thumbs: ThumbnailCache
+    controller: Controller

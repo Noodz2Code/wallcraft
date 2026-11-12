@@ -1,0 +1,90 @@
+name: Release
+
+# Push a tag like v0.1.0 to build and publish a GitHub release with:
+#   Wallcraft-<version>-Setup.exe     installer (per-user, no admin needed)
+#   Wallcraft-<version>-portable.exe  single-file portable build
+#   Wallcraft-<version>-win64.zip     unpacked folder build
+#   SHA256SUMS.txt
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - run: python -m pip install -r requirements-dev.txt
+
+      - name: Check tag matches version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path src\wallcraft\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$v") {
+            throw "Tag ${{ github.ref_name }} does not match __version__ $v"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Build portable exe
+        env:
+          WALLCRAFT_ONEFILE: "1"
+        run: python -m PyInstaller --noconfirm --clean wallcraft.spec
+
+      - name: Smoke-test the packaged exe
+        shell: pwsh
+        run: |
+          $env:WALLCRAFT_HOME = "$env:RUNNER_TEMP\wallcraft-home"
+          $p = Start-Process -FilePath .\dist\Wallcraft.exe -ArgumentList "--smoke-test" -Wait -PassThru
+          Get-Content "$env:WALLCRAFT_HOME\logs\wallcraft.log" -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed with exit code $($p.ExitCode)" }
+
+      - name: Build folder version
+        env:
+          WALLCRAFT_ONEFILE: "0"
+        run: python -m PyInstaller --noconfirm wallcraft.spec
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build installer
+        shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\wallcraft.iss'
+
+      - name: Collect release files
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item dist\Wallcraft.exe "release\Wallcraft-$v-portable.exe"
+          Copy-Item "dist\Wallcraft-$v-Setup.exe" release\
+          Compress-Archive -Path dist\Wallcraft\* -DestinationPath "release\Wallcraft-$v-win64.zip"
+          Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
+            Set-Content release\SHA256SUMS.txt -Encoding ascii
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Wallcraft ${{ steps.version.outputs.version }}
+          files: release/*
+          generate_release_notes: true
+          draft: ${{ github.event_name == 'workflow_dispatch' }}

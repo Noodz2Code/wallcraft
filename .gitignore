@@ -1,0 +1,74 @@
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Tool caches and coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Packaging metadata
+*.egg-info/
+.eggs/
+wheels/
+pip-wheel-metadata/
+
+# ---------------------------------------------------------------------------
+# Build output (PyInstaller, Inno Setup, release staging)
+# ---------------------------------------------------------------------------
+build/
+dist/
+release/
+installer/Output/
+*.manifest
+# Note: wallcraft.spec is the real build recipe and IS committed.
+# Many Python templates ignore *.spec; don't add that rule here.
+
+# ---------------------------------------------------------------------------
+# Local app data (portable mode, test runs) and logs
+# ---------------------------------------------------------------------------
+wallcraft-data/
+*.log
+
+# Secrets / local environment
+.env
+.env.*
+
+# ---------------------------------------------------------------------------
+# Editors and IDEs
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# Operating systems
+# ---------------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+.DS_Store

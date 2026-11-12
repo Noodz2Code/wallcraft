@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wallcraft"
+dynamic = ["version"]
+description = "Wallpaper manager for Windows with live video wallpapers, time-of-day switching and theme sync"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Wallcraft contributors" }]
+keywords = ["wallpaper", "live-wallpaper", "windows", "desktop", "dark-mode"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Programming Language :: Python :: 3",
+    "Topic :: Desktop Environment",
+]
+dependencies = ["PySide6>=6.6,<7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "pyinstaller>=6.6", "pillow>=10"]
+
+[project.gui-scripts]
+wallcraft = "wallcraft.app:main"
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/wallcraft"
+Issues = "https://github.com/YOUR_USERNAME/wallcraft/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "wallcraft.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+wallcraft = ["resources/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+  "E501",
+  "B027",  # Backend has intentional no-op default hooks
+]
