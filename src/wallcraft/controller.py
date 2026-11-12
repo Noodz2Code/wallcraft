@@ -207,7 +207,11 @@ class Controller(QObject):
                 else:
                     paths.append(p)
         if not ss.include_live:
-            paths = [p for p in paths if not is_live(p)]
+            def live(p: str) -> bool:
+                item = self.library.find(p)
+                return item.is_live if item else is_live(p)
+
+            paths = [p for p in paths if not live(p)]
         return paths
 
     def slideshow_next_change(self) -> float | None:

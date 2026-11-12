@@ -27,7 +27,12 @@
 - WebP and other formats Windows can't show natively are converted automatically.
 
 **Live wallpapers**
-- Videos (MP4, WebM, MKV, MOV, AVI, WMV) and animated GIFs play *behind your desktop icons*, on one or all monitors.
+- Videos and animated images play *behind your desktop icons*, on one or all monitors:
+  - **Video:** MP4, M4V, MOV, MKV, WebM, AVI, WMV, ASF, MPG/MPEG, M2V, VOB, TS, M2TS, MTS, FLV, F4V, 3GP, 3G2, OGV
+  - **Codecs:** H.264, H.265/HEVC, VP8, VP9, AV1\*, MPEG-1/2/4, WMV, Theora, Motion JPEG
+  - **Animated images:** GIF and animated WebP (a still WebP is treated as a normal image)
+
+  \*AV1 needs a graphics card with AV1 decoding (most from 2020 onward).
 - Hardware video decoding through Qt Multimedia / FFmpeg.
 - A still frame from the video is set as the regular Windows wallpaper underneath, so the desktop never goes blank when playback stops or Wallcraft quits.
 - Muted by default. With several monitors, only one plays sound.
@@ -101,7 +106,7 @@ Closing the window keeps Wallcraft running in the tray. Choose **Quit Wallcraft*
 
 - **The live wallpaper doesn't show, or vanished.** Wallcraft re-attaches automatically after Explorer restarts. If it still isn't visible, restart Wallcraft from the tray. Then open an issue with your Windows version (`winver`) and the log file attached.
 - **The wallpaper looks blurry.** Turn on *Settings → Keep JPEG wallpapers at full quality* (Windows re-compresses JPEGs by default).
-- **A video doesn't play.** Most H.264, H.265, VP9 and AV1 files work. Check the log for the decoder error.
+- **A video doesn't play.** Check the codec is in the list above. AV1 needs a graphics card that decodes it. The log file shows the decoder error.
 
 ## Building from source
 

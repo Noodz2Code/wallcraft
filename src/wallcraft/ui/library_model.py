@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
@@ -172,7 +173,8 @@ class ThumbDelegate(QStyledItemDelegate):
         painter.setFont(badge_font)
         x = thumb.x() + 8
         if item.is_live:
-            x = self._badge(painter, x, thumb.y() + 8, "LIVE" if item.kind is Kind.VIDEO else "GIF",
+            tag = "LIVE" if item.kind is Kind.VIDEO else os.path.splitext(item.path)[1].lstrip(".").upper()
+            x = self._badge(painter, x, thumb.y() + 8, tag,
                             QColor(0, 0, 0, 165), QColor("#FFFFFF"))
         if self._in_use(item.path):
             self._badge(painter, x, thumb.y() + 8, "IN USE", QColor(t["accent"]), QColor(t["on_accent"]))

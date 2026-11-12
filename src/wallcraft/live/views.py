@@ -1,4 +1,4 @@
-"""Widgets that render live wallpapers (video and animated GIF)."""
+"""Widgets that render live wallpapers: videos, and animated images (GIF, animated WebP)."""
 
 from __future__ import annotations
 
@@ -67,7 +67,9 @@ class _VideoView(QWidget):
         self._player.setSource(QUrl())
 
 
-class _GifView(QWidget):
+class _AnimatedImageView(QWidget):
+    """Plays animated GIF and WebP files with QMovie."""
+
     def __init__(self, path: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         _black(self)
@@ -76,7 +78,7 @@ class _GifView(QWidget):
         self._movie = QMovie(path, parent=self)
         self._movie.setCacheMode(QMovie.CacheMode.CacheNone)
         self._movie.frameChanged.connect(lambda _n: self.update())
-        self._movie.error.connect(lambda _e: log.error("GIF error (%s): %s", path, self._movie.lastErrorString()))
+        self._movie.error.connect(lambda _e: log.error("Animated image error (%s): %s", path, self._movie.lastErrorString()))
 
     def set_fit(self, fit: FitMode) -> None:
         self._fit = fit
@@ -146,7 +148,7 @@ class LiveWindow(QWidget):
         _black(self)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._view = _VideoView(item.path, self) if item.kind is Kind.VIDEO else _GifView(item.path, self)
+        self._view = _VideoView(item.path, self) if item.kind is Kind.VIDEO else _AnimatedImageView(item.path, self)
         layout.addWidget(self._view)
         self._playing = False
 

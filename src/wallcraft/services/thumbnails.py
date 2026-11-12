@@ -1,7 +1,7 @@
 """Thumbnail generation with memory + disk caching.
 
 Images are decoded on a thread pool at reduced size (QImageReader.setScaledSize
-lets the JPEG decoder skip work). Videos and GIFs go through the PosterService.
+lets the JPEG decoder skip work). Videos and animated images go through the PosterService.
 """
 
 from __future__ import annotations

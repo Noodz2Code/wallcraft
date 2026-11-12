@@ -49,7 +49,7 @@ class SlideshowPage(Page):
         row.addWidget(self._playlist_radio)
         row.addStretch(1)
         src.body.addLayout(row)
-        self._include_live = QCheckBox("Include live wallpapers (videos and GIFs)")
+        self._include_live = QCheckBox("Include live wallpapers (videos and animated images)")
         src.body.addWidget(self._include_live)
         self.content.addWidget(src)
 

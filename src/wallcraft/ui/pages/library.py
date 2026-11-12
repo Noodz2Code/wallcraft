@@ -239,7 +239,7 @@ class LibraryPage(QWidget):
         titles = QVBoxLayout()
         titles.setSpacing(4)
         titles.addWidget(label("Library", "h1"))
-        titles.addWidget(label("Images, videos and GIFs from your folders. Double-click to apply.", "muted"))
+        titles.addWidget(label("Images, videos and animated images from your folders. Double-click to apply.", "muted"))
         head.addLayout(titles, 1)
         add_folder = button("Add folder…", primary=True)
         add_folder.clicked.connect(self._add_folder)

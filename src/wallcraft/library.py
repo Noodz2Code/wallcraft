@@ -6,16 +6,27 @@ import os
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 from pathlib import Path
 
 IMAGE_EXTS = frozenset(
-    {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".bmp", ".dib", ".webp", ".tif", ".tiff"}
+    {".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".bmp", ".dib", ".tif", ".tiff"}
 )
 # Formats the Windows desktop renders without conversion.
 NATIVE_IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".jpe", ".jfif", ".png", ".bmp", ".dib", ".tif", ".tiff"})
-VIDEO_EXTS = frozenset({".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi", ".wmv"})
+# Every container below was verified to play through Qt Multimedia's FFmpeg backend.
+VIDEO_EXTS = frozenset({
+    ".mp4", ".m4v", ".mov", ".mkv", ".webm",           # modern (H.264, H.265, VP8/9, AV1)
+    ".avi", ".wmv", ".asf",                            # Windows / legacy
+    ".mpg", ".mpeg", ".m2v", ".vob",                   # MPEG-1/2, DVD
+    ".m2ts", ".mts",                                   # camcorders, Blu-ray
+    ".flv", ".f4v", ".3gp", ".3g2", ".ogv",            # Flash, phones, Ogg/Theora
+})
 ANIMATED_EXTS = frozenset({".gif"})
-ALL_EXTS = IMAGE_EXTS | VIDEO_EXTS | ANIMATED_EXTS
+# Extensions whose kind depends on the file contents: WebP can be still or animated, and
+# .ts is both MPEG transport stream video and TypeScript source code.
+SNIFFED_EXTS = frozenset({".webp", ".ts"})
+ALL_EXTS = IMAGE_EXTS | VIDEO_EXTS | ANIMATED_EXTS | SNIFFED_EXTS
 
 
 class Kind(str, Enum):
@@ -29,17 +40,51 @@ class Kind(str, Enum):
 
     @property
     def label(self) -> str:
-        return {Kind.IMAGE: "Image", Kind.VIDEO: "Video", Kind.ANIMATED: "Animated GIF"}[self]
+        return {Kind.IMAGE: "Image", Kind.VIDEO: "Video", Kind.ANIMATED: "Animated image"}[self]
+
+
+@lru_cache(maxsize=4096)
+def _header(path: str, mtime_ns: int, size: int) -> bytes:
+    """First bytes of a file, cached per (path, mtime, size) so repeated checks are free."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(32)
+    except OSError:
+        return b""
+
+
+def read_header(path: str) -> bytes:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return b""
+    return _header(os.path.abspath(path), st.st_mtime_ns, st.st_size)
+
+
+def is_animated_webp(header: bytes) -> bool:
+    # RIFF....WEBPVP8X, then a flags byte where bit 1 (0x02) marks animation.
+    return (len(header) > 20 and header[:4] == b"RIFF" and header[8:12] == b"WEBP"
+            and header[12:16] == b"VP8X" and bool(header[20] & 0x02))
+
+
+def is_mpeg_ts(header: bytes) -> bool:
+    # 188-byte packets start with sync byte 0x47; 192-byte (M2TS-style) packets have it at offset 4.
+    return len(header) > 4 and (header[0] == 0x47 or header[4] == 0x47)
 
 
 def classify(path: str | os.PathLike) -> Kind | None:
-    ext = os.path.splitext(str(path))[1].lower()
+    path = str(path)
+    ext = os.path.splitext(path)[1].lower()
     if ext in IMAGE_EXTS:
         return Kind.IMAGE
     if ext in VIDEO_EXTS:
         return Kind.VIDEO
     if ext in ANIMATED_EXTS:
         return Kind.ANIMATED
+    if ext == ".webp":
+        return Kind.ANIMATED if is_animated_webp(read_header(path)) else Kind.IMAGE
+    if ext == ".ts":
+        return Kind.VIDEO if is_mpeg_ts(read_header(path)) else None
     return None
 
 
@@ -128,7 +173,7 @@ def scan(
 
     for folder in folders:
         for entry in _walk(folder, recursive, cancelled):
-            if classify(entry.name) is None:
+            if os.path.splitext(entry.name)[1].lower() not in ALL_EXTS:
                 continue
             try:
                 st = entry.stat()
