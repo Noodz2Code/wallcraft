@@ -18,9 +18,9 @@ jobs:
   release:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -82,9 +82,13 @@ jobs:
             ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
             Set-Content release\SHA256SUMS.txt -Encoding ascii
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: Wallcraft ${{ steps.version.outputs.version }}
+          # Explicit tag so a manual "Run workflow" (which runs on a branch) also works:
+          # it creates a draft release whose tag is created when you publish it.
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
           files: release/*
           generate_release_notes: true
           draft: ${{ github.event_name == 'workflow_dispatch' }}
