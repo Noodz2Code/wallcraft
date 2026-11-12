@@ -8,7 +8,7 @@
 
 #define AppName "Wallcraft"
 #define AppExe "Wallcraft.exe"
-#define AppURL "https://github.com/YOUR_USERNAME/wallcraft"
+#define AppURL "https://github.com/Noodz2Code/wallcraft"
 
 [Setup]
 AppId={{8C1B7E52-4C3F-4E7A-9B0D-5A2E6F9D3C41}

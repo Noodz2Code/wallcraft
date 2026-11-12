@@ -113,7 +113,7 @@ Closing the window keeps Wallcraft running in the tray. Choose **Quit Wallcraft*
 You need Python 3.10+ (3.12 recommended) and Git.
 
 ```powershell
-git clone https://github.com/YOUR_USERNAME/wallcraft.git
+git clone https://github.com/Noodz2Code/wallcraft.git
 cd wallcraft
 python -m venv .venv
 .venv\Scripts\activate

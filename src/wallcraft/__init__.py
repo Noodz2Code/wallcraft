@@ -1,10 +1,9 @@
 """Wallcraft - a wallpaper manager for Windows with live wallpapers and smart switching."""
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 APP_NAME = "Wallcraft"
 APP_ID = "wallcraft"
 APP_USER_MODEL_ID = "Wallcraft.Wallcraft"
 
-# Update this after creating the GitHub repository.
-REPO_URL = "https://github.com/YOUR_USERNAME/wallcraft"
+REPO_URL = "https://github.com/Noodz2Code/wallcraft"
