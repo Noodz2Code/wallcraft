@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPalette, QPen, QPixmap
+from PySide6.QtCore import QPointF, QRect, QRectF, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QIcon, QIconEngine, QPainter, QPainterPath, QPalette, QPen, QPixmap
 from PySide6.QtWidgets import QApplication
 
 from ..paths import cache_dir
@@ -31,6 +32,7 @@ LIGHT = {
     "thumb_bg": "#E3E5EA",
     "animated_tag": "#E67C3AED",  # Qt order: #AARRGGBB
     "animated": "#7C3AED",
+    "star": "#B87900",
 }
 
 DARK = {
@@ -44,15 +46,16 @@ DARK = {
     "muted": "#9599A2",
     "accent": "#7C86F0",
     "accent_hover": "#8D96F4",
-    "accent_soft": "#262A49",
-    "on_accent": "#FFFFFF",
+    "accent_soft": "#21253F",
+    "on_accent": "#0E1033",  # dark ink on the light accent: 5.7:1, white would be 3.2:1
     "success": "#4CC17E",
     "success_soft": "#1A2E23",
     "warning": "#E0A030",
     "danger": "#EF6B6B",
     "thumb_bg": "#26282E",
-    "animated_tag": "#E68B5CF6",  # Qt order: #AARRGGBB
-    "animated": "#8B5CF6",
+    "animated_tag": "#E67C3AED",  # Qt order: #AARRGGBB
+    "animated": "#7C3AED",  # white tag text needs the deeper violet in dark mode too
+    "star": "#F5B83D",
 }
 
 _current: dict[str, str] = LIGHT
@@ -123,7 +126,10 @@ QLabel#tag {{ background: {t['surface_alt']}; border: 1px solid {t['border']}; c
               border-radius: 6px; padding: 1px 7px; font-size: 8pt; font-weight: 700; }}
 QLabel#tagAnimated {{ background: {t['animated']}; color: #FFFFFF; border-radius: 6px;
                       padding: 1px 7px; font-size: 8pt; font-weight: 700; }}
+QLabel#tagInUse {{ background: {t['accent']}; color: {t['on_accent']}; border-radius: 6px;
+                   padding: 1px 7px; font-size: 8pt; font-weight: 700; }}
 QLabel#layerName {{ font-weight: 600; }}
+QLabel#emptyTitle {{ font-size: 11pt; font-weight: 600; }}
 QWidget#detailsContent {{ background: transparent; }}
 QFrame#separator {{ background: {t['border']}; max-height: 1px; min-height: 1px; border: none; }}
 
@@ -139,7 +145,19 @@ QPushButton[primary="true"]:hover {{ background: {t['accent_hover']}; }}
 QPushButton[primary="true"]:disabled {{ background: {t['hover']}; color: {t['muted']}; border-color: {t['border']}; }}
 QPushButton[flat="true"] {{ background: transparent; border: none; color: {t['accent']}; padding: 4px 6px; }}
 QPushButton[flat="true"]:hover {{ background: {t['hover']}; }}
+QPushButton[flat="true"]:disabled {{ background: transparent; color: {t['muted']}; }}
 QPushButton[danger="true"] {{ color: {t['danger']}; }}
+QPushButton[danger="true"]:disabled {{ color: {t['muted']}; }}
+QPushButton[link="true"] {{ text-align: left; }}
+QPushButton#iconButton {{ background: transparent; border: none; border-radius: 6px; padding: 0;
+                          min-height: 0; }}
+QPushButton#iconButton:hover {{ background: {t['hover']}; }}
+QPushButton#iconButton:pressed {{ background: {t['border']}; }}
+/* Buttons take focus from the keyboard only (see widgets.button), so this ring never lingers after a click. */
+QPushButton:focus {{ border-color: {t['accent']}; }}
+QPushButton[primary="true"]:focus {{ border-color: {t['text']}; }}
+QPushButton[flat="true"]:focus, QPushButton#iconButton:focus {{ background: {t['hover']}; }}
+QFrame#segmented QPushButton:focus {{ border-color: {t['accent']}; }}
 
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QTimeEdit {{
     background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 7px;
@@ -179,6 +197,7 @@ QHeaderView::section {{ background: transparent; border: none; border-bottom: 1p
 QScrollBar:vertical {{ background: transparent; width: 10px; margin: 2px; }}
 QScrollBar::handle:vertical {{ background: {t['border']}; border-radius: 4px; min-height: 32px; }}
 QScrollBar::handle:vertical:hover {{ background: {t['muted']}; }}
+QScrollBar[idle="true"]::handle:vertical {{ background: transparent; }}
 QScrollBar:horizontal {{ background: transparent; height: 10px; margin: 2px; }}
 QScrollBar::handle:horizontal {{ background: {t['border']}; border-radius: 4px; min-width: 32px; }}
 QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
@@ -244,3 +263,107 @@ def repolish(widget) -> None:
     widget.style().unpolish(widget)
     widget.style().polish(widget)
     widget.update()
+
+
+# Icons -------------------------------------------------------------------------- #
+# A small drawn icon set (one stroke weight, 20×20 grid) instead of font glyphs, which
+# render in whatever symbol font each system happens to have. Colours are read from the
+# current tokens at paint time, so icons follow light/dark switches without rebuilding.
+
+def _star_path(cx: float, cy: float, outer: float, inner: float) -> QPainterPath:
+    path = QPainterPath()
+    for i in range(10):
+        r = outer if i % 2 == 0 else inner
+        a = math.radians(-90 + i * 36)
+        pt = QPointF(cx + r * math.cos(a), cy + r * math.sin(a))
+        path.moveTo(pt) if i == 0 else path.lineTo(pt)
+    path.closeSubpath()
+    return path
+
+
+def paint_icon(p: QPainter, rect: QRectF, name: str, color: QColor, fill: QColor | None = None) -> None:
+    """Draw icon ``name`` into ``rect`` (any size; geometry is defined on a 20×20 grid)."""
+    p.save()
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.translate(rect.x(), rect.y())
+    p.scale(rect.width() / 20, rect.height() / 20)
+    pen = QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+    p.setPen(pen)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    lines = {
+        "close": ((6, 6, 14, 14), (14, 6, 6, 14)),
+        "plus": ((10, 5, 10, 15), (5, 10, 15, 10)),
+    }
+    polylines = {
+        "chevron-left": ((12, 5), (7, 10), (12, 15)),
+        "chevron-right": ((8, 5), (13, 10), (8, 15)),
+    }
+    if name in lines:
+        for x1, y1, x2, y2 in lines[name]:
+            p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+    elif name in polylines:
+        path = QPainterPath()
+        pts = polylines[name]
+        path.moveTo(QPointF(*pts[0]))
+        for pt in pts[1:]:
+            path.lineTo(QPointF(*pt))
+        p.drawPath(path)
+    elif name == "star":
+        if fill is not None:
+            p.setPen(QPen(fill, 1.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.setBrush(fill)
+        p.drawPath(_star_path(10, 10.6, 7.2, 3.1))
+    p.restore()
+
+
+class _IconEngine(QIconEngine):
+    def __init__(self, name: str, role: str, on_fill: str | None) -> None:
+        super().__init__()
+        self._name = name
+        self._role = role
+        self._on_fill = on_fill
+
+    def paint(self, painter: QPainter, rect: QRect, mode: QIcon.Mode, state: QIcon.State) -> None:
+        if mode == QIcon.Mode.Disabled:
+            c = color("muted")
+            c.setAlphaF(0.6)
+        else:
+            c = color(self._role)
+        fill = None
+        if self._on_fill and state == QIcon.State.On and mode != QIcon.Mode.Disabled:
+            c = fill = color(self._on_fill)
+        paint_icon(painter, QRectF(rect), self._name, c, fill)
+
+    def pixmap(self, size: QSize, mode: QIcon.Mode, state: QIcon.State) -> QPixmap:
+        pix = QPixmap(size)
+        pix.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pix)
+        self.paint(p, QRect(0, 0, size.width(), size.height()), mode, state)
+        p.end()
+        return pix
+
+    def clone(self) -> QIconEngine:
+        return _IconEngine(self._name, self._role, self._on_fill)
+
+
+def icon(name: str, role: str = "text", on_fill: str | None = None) -> QIcon:
+    """Themed icon: ``close``, ``plus``, ``chevron-left``, ``chevron-right`` or ``star``.
+
+    ``role`` is the colour token for the stroke; ``on_fill`` fills the shape in that token
+    when a checkable button is checked (e.g. a filled star for favourites).
+    """
+    return QIcon(_IconEngine(name, role, on_fill))
+
+
+def draw_badge(painter: QPainter, x: float, y: float, text: str, bg: QColor, fg: QColor) -> float:
+    """Pill-shaped label (file type, IN USE) painted over a thumbnail. Returns the x after it."""
+    fm = painter.fontMetrics()
+    w = fm.horizontalAdvance(text) + 12
+    h = fm.height() + 4
+    rect = QRectF(x, y, w, h)
+    path = QPainterPath()
+    path.addRoundedRect(rect, h / 2, h / 2)
+    painter.fillPath(path, bg)
+    painter.setPen(fg)
+    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+    return x + w + 6

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from ...config import Mode
+from .. import style
 from ..picker import media_file_filter, pick_wallpaper
 from ..widgets import Card, ModeBanner, Page, button, label, rounded
 
@@ -71,9 +72,10 @@ class SlideshowPage(Page):
         self._shuffle = QCheckBox("Shuffle")
         timing.body.addWidget(self._shuffle)
         ctl = QHBoxLayout()
-        prev = button("‹  Previous")
+        prev = button("Previous", icon=style.icon("chevron-left"))
         prev.clicked.connect(lambda: ctx.controller.next_wallpaper(-1))
-        nxt = button("Next  ›")
+        nxt = button("Next", icon=style.icon("chevron-right"))
+        nxt.setLayoutDirection(Qt.LayoutDirection.RightToLeft)  # chevron after the text
         nxt.clicked.connect(lambda: ctx.controller.next_wallpaper(1))
         ctl.addWidget(prev)
         ctl.addWidget(nxt)

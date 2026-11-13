@@ -179,5 +179,5 @@ class ThemePage(Page):
     def _update_os_state(self) -> None:
         theme = self._ctx.controller.os_theme
         self._os_state.setText(f"Windows is in {theme} mode right now, so the {theme} wallpaper applies.")
-        self._light.set_title("Light mode" + ("  ● in use" if theme == "light" else ""))
-        self._dark.set_title("Dark mode" + ("  ● in use" if theme == "dark" else ""))
+        self._light.set_in_use(theme == "light")
+        self._dark.set_in_use(theme == "dark")

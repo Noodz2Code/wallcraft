@@ -26,9 +26,10 @@ from PySide6.QtWidgets import (
 
 from ...config import FitMode
 from ...library import Kind, MediaItem, norm
+from .. import style
 from ..library_model import GridView, ItemRole, LibraryFilter, LibraryModel, ThumbDelegate
 from ..picker import media_file_filter
-from ..widgets import ThumbLabel, button, label, separator
+from ..widgets import ElidedLabel, ThumbLabel, button, label, separator
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -101,41 +102,65 @@ class DetailsPanel(QFrame):
         self.setFixedWidth(320)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(1, 1, 1, 1)
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        outer.addWidget(scroll)
+
+        # Nothing selected: a quiet prompt instead of a column of disabled controls.
+        self._empty = QWidget()
+        self._empty.setObjectName("detailsContent")
+        empty = QVBoxLayout(self._empty)
+        empty.setContentsMargins(24, 24, 24, 24)
+        empty.setSpacing(6)
+        empty.addStretch(1)
+        for text, kind in (("No wallpaper selected", "emptyTitle"),
+                           ("Select a wallpaper to preview it. Double-click one to apply it right away.", "muted")):
+            lbl = label(text, kind, wrap=True)
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty.addWidget(lbl)
+        empty.addStretch(1)
+        outer.addWidget(self._empty)
+
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.addWidget(self._scroll)
         content = QWidget()
         content.setObjectName("detailsContent")
-        scroll.setWidget(content)
+        self._scroll.setWidget(content)
         lay = QVBoxLayout(content)
         lay.setContentsMargins(15, 15, 15, 15)
         lay.setSpacing(10)
 
         self._preview = ThumbLabel(ctx, QSize(280, 158))
         lay.addWidget(self._preview)
-        self._name = label("", "h2")
+        self._name = ElidedLabel("", "h2")
         lay.addWidget(self._name)
         tags = QHBoxLayout()
         tags.setSpacing(6)
         self._type_tag = label("", "tag")
         self._layer_tag = label("", "tag")
+        self._in_use_tag = label("In use", "tagInUse")
         tags.addWidget(self._type_tag)
         tags.addWidget(self._layer_tag)
+        tags.addWidget(self._in_use_tag)
         tags.addStretch(1)
         lay.addLayout(tags)
+        meta = QVBoxLayout()
+        meta.setSpacing(2)
         self._info = label("", "muted")
-        lay.addWidget(self._info)
-        self._folder = label("", "small")
-        lay.addWidget(self._folder)
+        meta.addWidget(self._info)
+        self._folder = ElidedLabel("", "small", Qt.TextElideMode.ElideMiddle)
+        meta.addWidget(self._folder)
+        lay.addLayout(meta)
 
+        lay.addSpacing(4)
         self._display_label = label("Display", "small")
         self._display = QComboBox()
+        self._display.setAccessibleName("Display")
         lay.addWidget(self._display_label)
         lay.addWidget(self._display)
         lay.addWidget(label("Fit", "small"))
         self._fit = QComboBox()
+        self._fit.setAccessibleName("Fit")
         for fit in FitMode:
             self._fit.addItem(fit.label, fit)
         self._fit.currentIndexChanged.connect(self._fit_changed)
@@ -151,7 +176,7 @@ class DetailsPanel(QFrame):
         lay.addWidget(self._remove_live)
 
         row = QHBoxLayout()
-        self._fav = button("☆  Favorite")
+        self._fav = button("Favorite", icon=style.icon("star", "text", on_fill="star"))
         self._fav.setCheckable(True)
         self._fav.toggled.connect(self._fav_toggled)
         reveal = button("Show in folder")
@@ -160,17 +185,21 @@ class DetailsPanel(QFrame):
         row.addWidget(reveal)
         lay.addLayout(row)
 
+        lay.addSpacing(2)
         lay.addWidget(separator())
         lay.addWidget(label("Use in", "small"))
+        links = QVBoxLayout()
+        links.setSpacing(0)
         for text, fn in (
             ("Add to slideshow playlist", lambda: page.add_to_slideshow([self._item])),
             ("Use for light theme", lambda: page.use_for_theme(self._item, "light")),
             ("Use for dark theme", lambda: page.use_for_theme(self._item, "dark")),
         ):
             b = button(text, flat=True)
-            b.setStyleSheet("text-align: left;")
+            b.setProperty("link", True)
             b.clicked.connect(fn)
-            lay.addWidget(b)
+            links.addWidget(b)
+        lay.addLayout(links)
         lay.addStretch(1)
         remove = button("Remove from library", flat=True, danger=True)
         remove.clicked.connect(lambda: self._item and page.remove_items([self._item]))
@@ -178,7 +207,7 @@ class DetailsPanel(QFrame):
 
         ctx.store.changed.connect(self._on_config)
         ctx.controller.wallpaperChanged.connect(self._refresh_monitors)
-        ctx.controller.wallpaperChanged.connect(self._sync_layer_buttons)
+        ctx.controller.wallpaperChanged.connect(self._sync_state)
         self._refresh_monitors()
         self._on_config("general")
         self.set_item(None)
@@ -213,7 +242,6 @@ class DetailsPanel(QFrame):
         fav = bool(self._item) and self._ctx.library.is_favorite(self._item.path)
         self._fav.blockSignals(True)
         self._fav.setChecked(fav)
-        self._fav.setText("★  Favorite" if fav else "☆  Favorite")
         self._fav.blockSignals(False)
 
     def _fav_toggled(self, checked: bool) -> None:
@@ -225,32 +253,25 @@ class DetailsPanel(QFrame):
         if self._item:
             self._ctx.controller.set_wallpaper(self._item.path, self._display.currentData())
 
-    def _sync_layer_buttons(self) -> None:
+    def _sync_state(self) -> None:
+        item = self._item
         animated_active = any(self._ctx.controller.current_live.values())
-        self._remove_live.setVisible(bool(self._item) and self._item.is_live and animated_active)
+        self._remove_live.setVisible(bool(item) and item.is_live and animated_active)
+        self._in_use_tag.setVisible(bool(item) and norm(item.path) in self._ctx.controller.in_use)
 
     def set_item(self, item: MediaItem | None) -> None:
         self._item = item
-        enabled = item is not None
-        for w in self.findChildren(QWidget):
-            if w not in (self._preview,):
-                w.setEnabled(enabled)
-        self._preview.set_path(item.path if item else "")
-        self._type_tag.setVisible(enabled)
-        self._layer_tag.setVisible(enabled)
-        self._sync_layer_buttons()
+        self._empty.setVisible(item is None)
+        self._scroll.setVisible(item is not None)
+        self._sync_state()
         if item is None:
-            self._name.setText("No wallpaper selected")
-            self._info.setText("Select a wallpaper to preview it.")
-            self._folder.setText("")
-            self._layer_hint.setText("")
-            self._apply.setText("Set as wallpaper")
-            self._sync_fav()
+            self._preview.set_path("")
             return
+        self._scroll.verticalScrollBar().setValue(0)
+        self._preview.set_path(item.path)
         self._type_tag.setText(item.tag)
         self._type_tag.setObjectName("tagAnimated" if item.is_live else "tag")
-        self._type_tag.style().unpolish(self._type_tag)
-        self._type_tag.style().polish(self._type_tag)
+        style.repolish(self._type_tag)
         self._layer_tag.setText("Animated layer" if item.is_live else "Static layer")
         if item.is_live:
             self._apply.setText("Set as animated wallpaper")
@@ -258,7 +279,7 @@ class DetailsPanel(QFrame):
         else:
             self._apply.setText("Set as static wallpaper")
             self._layer_hint.setText("Your regular Windows wallpaper. Animated wallpapers play on top of it.")
-        self._name.setText(self._name.fontMetrics().elidedText(item.name, Qt.TextElideMode.ElideRight, 276))
+        self._name.setText(item.name)
         self._name.setToolTip(item.name)
         parts = []
         if item.kind is not Kind.VIDEO:
@@ -267,8 +288,7 @@ class DetailsPanel(QFrame):
                 parts.append(f"{size.width()}×{size.height()}")
         parts.append(human_size(item.size))
         self._info.setText(" · ".join(parts))
-        folder = os.path.dirname(item.path)
-        self._folder.setText(self._folder.fontMetrics().elidedText(folder, Qt.TextElideMode.ElideMiddle, 276))
+        self._folder.setText(os.path.dirname(item.path))
         self._folder.setToolTip(item.path)
         self._sync_fav()
 
@@ -287,13 +307,14 @@ class LibraryPage(QWidget):
         titles.setSpacing(4)
         titles.addWidget(label("Library", "h1"))
         titles.addWidget(label("Static wallpapers are your regular Windows wallpaper. Animated ones play on top "
-                               "of it. Double-click to apply.", "muted"))
+                               "of it. Double-click to apply.", "muted", wrap=True))
         head.addLayout(titles, 1)
+        head.addSpacing(16)
         add_folder = button("Add folder…", primary=True)
         add_folder.clicked.connect(self._add_folder)
         add_files = button("Add files…")
         add_files.clicked.connect(self._add_files)
-        folders = button("Folders")
+        folders = button("Folders…")
         folders.clicked.connect(lambda: FoldersDialog(ctx, self).exec())
         for b in (folders, add_files, add_folder):
             head.addWidget(b, 0, Qt.AlignmentFlag.AlignBottom)
@@ -312,17 +333,20 @@ class LibraryPage(QWidget):
             b = QPushButton()
             b.setCheckable(True)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
+            b.setFocusPolicy(Qt.FocusPolicy.TabFocus)
             self._tabs.addButton(b)
             self._tab_buttons[key] = b
             seg.addWidget(b)
         self._tab_buttons["static"].setChecked(True)
+        self._shown_tab = "static"
         bar.addWidget(segmented)
-        self._favorites = button("★  Favorites")
+        self._favorites = button("Favorites", icon=style.icon("star", "text", on_fill="star"))
         self._favorites.setCheckable(True)
         bar.addWidget(self._favorites)
         bar.addSpacing(6)
         self._search = QLineEdit()
         self._search.setPlaceholderText("Search by name or folder")
+        self._search.setAccessibleName("Search wallpapers")
         self._search.setClearButtonEnabled(True)
         self._search.setMinimumWidth(200)
         self._search.setMaximumWidth(320)
@@ -373,8 +397,13 @@ class LibraryPage(QWidget):
         self._tab_changed()
 
     def _tab_changed(self) -> None:
+        if self.tab == self._shown_tab:
+            return
+        self._shown_tab = self.tab
         self._proxy.set_kind(self.tab)
-        self._grid.clearSelection()
+        # clear() also drops the current index; clearSelection() alone would leave it set, and
+        # clicking that same tile again wouldn't emit currentChanged or fill the details panel.
+        self._grid.selectionModel().clear()
         self._details.set_item(None)
         self._update_counts()
 
@@ -388,13 +417,29 @@ class LibraryPage(QWidget):
         self._empty_text = label("", "muted", wrap=True)
         self._empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._empty_text.setMaximumWidth(440)
-        lay.addWidget(self._empty_text, 0, Qt.AlignmentFlag.AlignHCenter)
-        b = button("Add a folder…", primary=True)
-        b.clicked.connect(self._add_folder)
+        # Centre with stretches: an alignment flag would size the wrapped label to its minimum width.
+        text_row = QHBoxLayout()
+        text_row.addStretch(1)
+        text_row.addWidget(self._empty_text, 100)
+        text_row.addStretch(1)
+        lay.addLayout(text_row)
+        self._empty_button = button("", primary=True)
+        self._empty_button.clicked.connect(lambda: self._empty_action())
+        self._empty_action = self._add_folder
         lay.addSpacing(8)
-        lay.addWidget(b, 0, Qt.AlignmentFlag.AlignHCenter)
+        lay.addWidget(self._empty_button, 0, Qt.AlignmentFlag.AlignHCenter)
         lay.addStretch(2)
         return w
+
+    def _set_empty(self, title: str, text: str, action_text: str, action) -> None:
+        self._empty_title.setText(title)
+        self._empty_text.setText(text)
+        self._empty_button.setText(action_text)
+        self._empty_action = action
+
+    def _show_all(self) -> None:
+        self._search.clear()
+        self._favorites.setChecked(False)
 
     def _update_counts(self) -> None:
         items = self._ctx.library.items
@@ -412,21 +457,33 @@ class LibraryPage(QWidget):
         else:
             text = f"{shown} of {total} {noun}"
         self._count.setText(text)
-        empty = total == 0 and not self._ctx.library.scanning
+        scanning = self._ctx.library.scanning
+        empty = total == 0 and not scanning
+        filtered_out = total > 0 and shown == 0
         if empty:
             if not items:
-                self._empty_title.setText("Start your collection")
-                self._empty_text.setText("Add a folder of images or videos. You can also drag and drop files and "
-                                         "folders anywhere in this window.")
+                self._set_empty("Start your collection",
+                                "Add a folder of images or videos. You can also drag and drop files and "
+                                "folders anywhere in this window.", "Add a folder…", self._add_folder)
             elif self.tab == "animated":
-                self._empty_title.setText("No animated wallpapers yet")
-                self._empty_text.setText("Add videos (MP4, WebM, MKV, MOV…) or animated images (GIF, animated "
-                                         "WebP). They play on top of your static wallpaper.")
+                self._set_empty("No animated wallpapers yet",
+                                "Add videos (MP4, WebM, MKV, MOV…) or animated images (GIF, animated "
+                                "WebP). They play on top of your static wallpaper.", "Add a folder…", self._add_folder)
             else:
-                self._empty_title.setText("No static wallpapers yet")
-                self._empty_text.setText("Add images (JPG, PNG, WebP, BMP…). The static wallpaper stays "
-                                         "underneath any animated one.")
-        self._stack.setCurrentIndex(1 if empty else 0)
+                self._set_empty("No static wallpapers yet",
+                                "Add images (JPG, PNG, WebP, BMP…). The static wallpaper stays "
+                                "underneath any animated one.", "Add a folder…", self._add_folder)
+        elif filtered_out:
+            query = self._search.text().strip()
+            if query:
+                self._set_empty("No matches", f"No {noun} match “{query}”"
+                                 + (" among your favorites." if self._favorites.isChecked() else "."),
+                                 "Clear search", self._show_all)
+            else:
+                self._set_empty("No favorites here yet",
+                                f"Select one of your {noun} and choose Favorite to keep it close at hand.",
+                                "Show all", self._show_all)
+        self._stack.setCurrentIndex(1 if empty or filtered_out else 0)
 
     # Actions ------------------------------------------------------------------ #
     def _add_folder(self) -> None:

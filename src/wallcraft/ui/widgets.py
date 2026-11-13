@@ -6,7 +6,7 @@ import os
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QRectF, QSize, Qt, Signal
-from PySide6.QtGui import QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -26,9 +26,14 @@ if TYPE_CHECKING:
 
 
 def button(text: str, *, primary: bool = False, flat: bool = False, danger: bool = False,
-           tooltip: str = "") -> QPushButton:
+           tooltip: str = "", icon: QIcon | None = None) -> QPushButton:
     b = QPushButton(text)
     b.setCursor(Qt.CursorShape.PointingHandCursor)
+    # Keyboard focus only: a click doesn't leave a focus ring behind, tabbing still shows one.
+    b.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+    if icon is not None:
+        b.setIcon(icon)
+        b.setIconSize(QSize(16, 16))
     if primary:
         b.setProperty("primary", True)
     if flat:
@@ -37,6 +42,20 @@ def button(text: str, *, primary: bool = False, flat: bool = False, danger: bool
         b.setProperty("danger", True)
     if tooltip:
         b.setToolTip(tooltip)
+    return b
+
+
+def icon_button(name: str, tooltip: str, size: int = 26) -> QPushButton:
+    """Square, borderless button showing only a drawn icon (e.g. remove ✕)."""
+    b = QPushButton()
+    b.setObjectName("iconButton")
+    b.setCursor(Qt.CursorShape.PointingHandCursor)
+    b.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+    b.setIcon(style.icon(name, "muted"))
+    b.setIconSize(QSize(16, 16))
+    b.setFixedSize(size, size)
+    b.setToolTip(tooltip)
+    b.setAccessibleName(tooltip)
     return b
 
 
@@ -53,6 +72,44 @@ def separator() -> QFrame:
     f.setObjectName("separator")
     f.setFrameShape(QFrame.Shape.NoFrame)
     return f
+
+
+class ElidedLabel(QLabel):
+    """Single-line label that elides to whatever width the layout gives it; full text in the tooltip."""
+
+    def __init__(self, text: str = "", kind: str = "",
+                 mode: Qt.TextElideMode = Qt.TextElideMode.ElideRight, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        if kind:
+            self.setObjectName(kind)
+        self._full = ""
+        self._mode = mode
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setText(text)
+
+    def full_text(self) -> str:
+        return self._full
+
+    def setText(self, text: str) -> None:  # noqa: N802
+        self._full = text
+        self._refresh()
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        return QSize(0, super().minimumSizeHint().height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._refresh()
+
+    def changeEvent(self, event) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() in (event.Type.FontChange, event.Type.StyleChange):
+            self._refresh()
+
+    def _refresh(self) -> None:
+        width = self.width() if self.width() > 0 else 10_000
+        shown = self.fontMetrics().elidedText(self._full, self._mode, width)
+        super().setText(shown)
 
 
 def rounded(pix: QPixmap, size: QSize, radius: float = 10.0) -> QPixmap:
@@ -113,11 +170,15 @@ class Page(QScrollArea):
 class ThumbLabel(QLabel):
     """Shows a wallpaper thumbnail, updating when the thumbnail cache finishes."""
 
-    def __init__(self, ctx: AppContext, size: QSize, parent: QWidget | None = None) -> None:
+    def __init__(self, ctx: AppContext, size: QSize, parent: QWidget | None = None, *,
+                 compact: bool = False) -> None:
         super().__init__(parent)
         self._ctx = ctx
         self._size = size
         self._path = ""
+        self._compact = compact  # too small for placeholder text: show the empty tile only
+        self._badge = ""
+        self._badge_animated = False
         self.setObjectName("thumb")
         self.setFixedSize(size)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -128,26 +189,51 @@ class ThumbLabel(QLabel):
         self._path = path
         self._render()
 
+    def set_badge(self, text: str, animated: bool = False) -> None:
+        """File-type badge painted over the thumbnail's corner, matching the library tiles."""
+        self._badge = text
+        self._badge_animated = animated
+        self.update()
+
     def _on_ready(self, path: str) -> None:
         if path == self._path:
             self._render()
 
+    def _placeholder(self, text: str) -> None:
+        self.setPixmap(QPixmap())
+        self.setText("" if self._compact else text)
+        self.setToolTip(text if self._compact and self._path else "")
+
     def _render(self) -> None:
         if not self._path:
-            self.setPixmap(QPixmap())
-            self.setText("No wallpaper")
+            self._placeholder("No wallpaper")
             return
         if not os.path.exists(self._path):
-            self.setPixmap(QPixmap())
-            self.setText("File missing")
+            self._placeholder("File missing")
             return
         pix = self._ctx.thumbs.get(self._path)
         if pix is None:
-            self.setPixmap(QPixmap())
-            self.setText("Loading…")
+            self._placeholder("Loading…")
             return
         self.setText("")
-        self.setPixmap(rounded(pix, self._size))
+        self.setToolTip("")
+        self.setPixmap(rounded(pix, self._size, 10.0 if self._size.width() > 120 else 6.0))
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        super().paintEvent(event)
+        if not (self._badge and self._path):
+            return
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        f = QFont(self.font())
+        f.setPointSizeF(max(6.5, self.font().pointSizeF() * 0.7))
+        f.setBold(True)
+        p.setFont(f)
+        t = style.tokens()
+        bg = QColor(t["animated_tag"]) if self._badge_animated else QColor(0, 0, 0, 160)
+        h = p.fontMetrics().height() + 4
+        style.draw_badge(p, 4, self.height() - h - 4, self._badge, bg, QColor("#FFFFFF"))
+        p.end()
 
 
 class WallpaperSlot(QFrame):
@@ -164,12 +250,19 @@ class WallpaperSlot(QFrame):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
+        head = QHBoxLayout()
+        head.setSpacing(8)
         self._title = label(title, "h2")
-        lay.addWidget(self._title)
+        head.addWidget(self._title)
+        self._in_use = label("In use", "tagInUse")
+        self._in_use.setVisible(False)
+        head.addWidget(self._in_use, 0, Qt.AlignmentFlag.AlignVCenter)
+        head.addStretch(1)
+        lay.addLayout(head)
         self._thumb = ThumbLabel(ctx, thumb)
         lay.addWidget(self._thumb)
-        self._name = label("", "small")
-        self._name.setMaximumWidth(thumb.width())
+        self._name = ElidedLabel("", "small", Qt.TextElideMode.ElideMiddle)
+        self._name.setFixedWidth(thumb.width())
         lay.addWidget(self._name)
         row = QHBoxLayout()
         row.setSpacing(6)
@@ -187,8 +280,8 @@ class WallpaperSlot(QFrame):
     def path(self) -> str:
         return self._path
 
-    def set_title(self, text: str) -> None:
-        self._title.setText(text)
+    def set_in_use(self, in_use: bool) -> None:
+        self._in_use.setVisible(in_use)
 
     def set_path(self, path: str) -> None:
         self._set(path, emit=False)
@@ -196,9 +289,7 @@ class WallpaperSlot(QFrame):
     def _set(self, path: str, emit: bool) -> None:
         self._path = path
         self._thumb.set_path(path)
-        name = os.path.basename(path) if path else "Nothing selected"
-        self._name.setText(self._name.fontMetrics().elidedText(name, Qt.TextElideMode.ElideMiddle,
-                                                               self._name.maximumWidth()))
+        self._name.setText(os.path.basename(path) if path else "Nothing selected")
         self._name.setToolTip(path)
         self._clear.setVisible(bool(path))
         if emit:

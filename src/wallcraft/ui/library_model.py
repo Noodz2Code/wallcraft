@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from .context import AppContext
 
 ItemRole = Qt.ItemDataRole.UserRole + 1
-MIN_CARD_WIDTH = 190
+MIN_CARD_WIDTH = 160  # keeps two columns at the window's minimum size
 TEXT_HEIGHT = 26
 PAD = 6
 
@@ -176,6 +176,12 @@ class ThumbDelegate(QStyledItemDelegate):
         if selected:
             painter.setPen(QPen(QColor(t["accent"]), 3))
             painter.drawPath(clip)
+        elif option.state & QStyle.StateFlag.State_HasFocus and self._focus_visible(option):
+            # Keyboard cursor on an unselected tile (e.g. after Ctrl+arrow).
+            ring = QColor(t["accent"])
+            ring.setAlphaF(0.6)
+            painter.setPen(QPen(ring, 2, Qt.PenStyle.DashLine))
+            painter.drawPath(clip)
 
         badge_font = QFont(option.font)
         badge_font.setPointSizeF(max(7.0, option.font.pointSizeF() * 0.78))
@@ -183,16 +189,18 @@ class ThumbDelegate(QStyledItemDelegate):
         painter.setFont(badge_font)
         # File-type tag on every tile; animated formats get the accent colour.
         tag_bg = QColor(t["animated_tag"]) if item.is_live else QColor(0, 0, 0, 160)
-        x = self._badge(painter, thumb.x() + 8, thumb.y() + 8, item.tag, tag_bg, QColor("#FFFFFF"))
+        x = style.draw_badge(painter, thumb.x() + 8, thumb.y() + 8, item.tag, tag_bg, QColor("#FFFFFF"))
         if self._in_use(item.path):
-            self._badge(painter, x, thumb.y() + 8, "IN USE", QColor(t["accent"]), QColor(t["on_accent"]))
+            style.draw_badge(painter, x, thumb.y() + 8, "IN USE", QColor(t["accent"]), QColor(t["on_accent"]))
         if self._ctx.library.is_favorite(item.path):
-            star = QRect(thumb.right() - 30, thumb.y() + 6, 24, 24)
-            painter.setPen(QColor("#FFC93C"))
-            f = QFont(option.font)
-            f.setPointSizeF(option.font.pointSizeF() * 1.3)
-            painter.setFont(f)
-            painter.drawText(star, Qt.AlignmentFlag.AlignCenter, "★")
+            # Same dark disc as the type badge so the star reads on any image.
+            d = painter.fontMetrics().height() + 4
+            disc = QRectF(thumb.right() - 8 - d, thumb.y() + 8, d, d)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(0, 0, 0, 160))
+            painter.drawEllipse(disc)
+            gold = QColor("#FFC93C")
+            style.paint_icon(painter, disc.adjusted(3, 3, -3, -3), "star", gold, gold)
 
         painter.setFont(option.font)
         painter.setPen(QColor(t["text"] if selected else t["muted"]))
@@ -202,17 +210,9 @@ class ThumbDelegate(QStyledItemDelegate):
         painter.restore()
 
     @staticmethod
-    def _badge(painter: QPainter, x: int, y: int, text: str, bg: QColor, fg: QColor) -> int:
-        fm = painter.fontMetrics()
-        w = fm.horizontalAdvance(text) + 12
-        h = fm.height() + 4
-        rect = QRectF(x, y, w, h)
-        path = QPainterPath()
-        path.addRoundedRect(rect, h / 2, h / 2)
-        painter.fillPath(path, bg)
-        painter.setPen(fg)
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
-        return x + w + 6
+    def _focus_visible(option) -> bool:
+        widget = option.widget
+        return widget is not None and widget.hasFocus() and getattr(widget, "keyboard_nav", False)
 
 
 class GridView(QListView):
@@ -234,6 +234,30 @@ class GridView(QListView):
         # computed in resizeEvent stays valid when the list grows past one screen.
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.verticalScrollBar().setSingleStep(24)
+        # ...but with nothing to scroll, hide its handle instead of drawing a full-height bar.
+        self.verticalScrollBar().rangeChanged.connect(self._sync_scrollbar)
+        self._sync_scrollbar()
+        self.keyboard_nav = False
+
+    def focusInEvent(self, event) -> None:  # noqa: N802
+        self.keyboard_nav = event.reason() in (Qt.FocusReason.TabFocusReason,
+                                                       Qt.FocusReason.BacktabFocusReason)
+        super().focusInEvent(event)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        self.keyboard_nav = False
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        self.keyboard_nav = True
+        super().keyPressEvent(event)
+
+    def _sync_scrollbar(self) -> None:
+        bar = self.verticalScrollBar()
+        idle = bar.maximum() <= bar.minimum()
+        if bar.property("idle") != idle:
+            bar.setProperty("idle", idle)
+            style.repolish(bar)
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         width = self.width() - self.verticalScrollBar().sizeHint().width() - 2 * self.frameWidth() - 4

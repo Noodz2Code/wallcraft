@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
-    QSizePolicy,
     QStackedWidget,
     QSystemTrayIcon,
     QVBoxLayout,
@@ -33,7 +32,7 @@ from .pages.settings import SettingsPage
 from .pages.slideshow import SlideshowPage
 from .pages.theme import ThemePage
 from .pages.timeofday import TimeOfDayPage
-from .widgets import ThumbLabel, button, label
+from .widgets import ElidedLabel, ThumbLabel, icon_button, label
 
 if TYPE_CHECKING:
     from .context import AppContext
@@ -49,50 +48,49 @@ PAGES = (
 
 
 class LayerRow(QFrame):
-    """One wallpaper layer in the sidebar: small thumbnail, layer name, file name and type tag."""
+    """One wallpaper layer in the sidebar: thumbnail with its type badge, layer name, file name."""
 
     def __init__(self, ctx: AppContext, title: str, animated: bool) -> None:
         super().__init__()
-        self._title = title
         self._animated = animated
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(8)
-        self.thumb = ThumbLabel(ctx, QSize(64, 40))
-        row.addWidget(self.thumb)
+        row.setSpacing(10)
+        self.thumb = ThumbLabel(ctx, QSize(64, 40), compact=True)
+        row.addWidget(self.thumb, 0, Qt.AlignmentFlag.AlignVCenter)
         text = QVBoxLayout()
-        text.setSpacing(1)
+        text.setSpacing(0)
+        text.addStretch(1)
         text.addWidget(label(title, "layerName"))
-        line = QHBoxLayout()
-        line.setSpacing(5)
-        self.tag = label("", "tagAnimated" if animated else "tag")
-        line.addWidget(self.tag)
-        self.name = label("", "small")
-        self.name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        line.addWidget(self.name, 1)
-        text.addLayout(line)
+        self.name = ElidedLabel("", "small")
+        text.addWidget(self.name)
+        self.status = ElidedLabel("", "small")
+        self.status.setVisible(False)
+        text.addWidget(self.status)
+        text.addStretch(1)
         row.addLayout(text, 1)
-        self.remove = button("✕", flat=True, tooltip="Remove the animated wallpaper")
-        self.remove.setFixedWidth(26)
+        self.remove = icon_button("close", "Remove the animated wallpaper", size=24)
         self.remove.setVisible(False)
-        row.addWidget(self.remove, 0, Qt.AlignmentFlag.AlignTop)
+        row.addWidget(self.remove, 0, Qt.AlignmentFlag.AlignVCenter)
 
-    def set_paths(self, paths: list[str], empty_text: str) -> None:
+    def set_paths(self, paths: list[str], empty_text: str, empty_hint: str = "") -> None:
         first = paths[0] if paths else ""
         self.thumb.set_path(first)
-        self.tag.setVisible(bool(first))
-        self.tag.setText(file_tag(first) if first else "")
+        self.thumb.set_badge(file_tag(first) if first else "", self._animated)
         if first:
             name = os.path.splitext(os.path.basename(first))[0]
             extra = len(set(paths)) - 1
-            text = name + (f" +{extra}" if extra > 0 else "")
+            self.name.setText(name + (f" +{extra}" if extra > 0 else ""))
+            self.name.setToolTip("\n".join(dict.fromkeys(paths)))
         else:
-            text = empty_text
-        # Sidebar is 198px: thumbnail 64 + gap 8 + remove button 26 leaves ~100px for tag + name.
-        width = 100 - (self.tag.sizeHint().width() + 5 if first else 0)
-        self.name.setText(self.name.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, max(40, width)))
-        self.name.setToolTip("\n".join(dict.fromkeys(paths)))
+            self.name.setText(empty_text)
+            self.name.setToolTip(empty_hint)
         self.remove.setVisible(self._animated and bool(first))
+
+    def set_status(self, text: str) -> None:
+        self.status.setText(text)
+        self.status.setToolTip(text)
+        self.status.setVisible(bool(text))
 
 
 class NowShowing(QFrame):
@@ -102,19 +100,16 @@ class NowShowing(QFrame):
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(8)
-        lay.addWidget(label("NOW SHOWING", "small"))
+        lay.addWidget(label("Now showing", "small"))
         self._animated = LayerRow(ctx, "Animated", animated=True)
         self._animated.remove.clicked.connect(lambda: ctx.controller.clear_animated())
         self._static = LayerRow(ctx, "Static", animated=False)
         lay.addWidget(self._animated)
         lay.addWidget(self._static)
-        self._live = label("", "small")
-        self._live.setWordWrap(True)
-        self._live.setMaximumWidth(198)
-        lay.addWidget(self._live)
-        lay.addSpacing(4)
-        lay.addWidget(label("MODE", "small"))
+        lay.addSpacing(10)
+        lay.addWidget(label("Mode", "small"))
         self._mode = QComboBox()
+        self._mode.setAccessibleName("Mode")
         for mode in Mode:
             self._mode.addItem(mode.label, mode)
         self._mode.currentIndexChanged.connect(lambda _i: ctx.controller.set_mode(self._mode.currentData()))
@@ -131,15 +126,12 @@ class NowShowing(QFrame):
         def paths(layer: dict[str, str]) -> list[str]:
             return [p for p in (layer.get(m.id, "") for m in c.monitors) if p]
 
-        self._static.set_paths(paths(c.current_static), "Not set: Windows keeps its own")
+        self._static.set_paths(paths(c.current_static), "Not set", "Windows keeps its own wallpaper")
         self._animated.set_paths(paths(c.current_live), "None")
+        self._animated.set_status(c.live_status() if c.live.has_assignments else "")
         self._mode.blockSignals(True)
         self._mode.setCurrentIndex(self._mode.findData(self._ctx.store.config.mode))
         self._mode.blockSignals(False)
-        live = c.live.has_assignments
-        self._live.setVisible(live)
-        if live:
-            self._live.setText(c.live_status())
 
 
 class MainWindow(QMainWindow):

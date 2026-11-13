@@ -25,8 +25,9 @@ from ...config import Mode, ScheduleSlot, TriggerKind, default_slots
 from ...locations import CITIES
 from ...schedule import effective_location, resolve, trigger_time
 from ...solar import solar_times
+from .. import style
 from ..picker import pick_wallpaper
-from ..widgets import Card, ModeBanner, Page, ThumbLabel, button, label, separator
+from ..widgets import Card, ModeBanner, Page, ThumbLabel, button, icon_button, label, separator
 
 if TYPE_CHECKING:
     from ..context import AppContext
@@ -80,7 +81,7 @@ class SlotRow(QFrame):
         self.choose.clicked.connect(self._choose)
         lay.addWidget(self.choose)
         lay.addStretch(1)
-        remove = button("✕", flat=True, tooltip="Remove this time")
+        remove = icon_button("close", "Remove this time")
         remove.clicked.connect(lambda: page.remove_slot(self.index))
         lay.addWidget(remove)
 
@@ -175,7 +176,7 @@ class TimeOfDayPage(Page):
         self._rows_box = QVBoxLayout()
         self._rows_box.setSpacing(0)
         sched.body.addLayout(self._rows_box)
-        add = button("+  Add time")
+        add = button("Add time", icon=style.icon("plus"))
         add.clicked.connect(self._add_slot)
         sched.body.addWidget(add, 0, Qt.AlignmentFlag.AlignLeft)
         self.content.addWidget(sched)
