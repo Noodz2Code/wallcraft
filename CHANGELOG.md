@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.4] - 2026-11-13
+
+### Changed
+- Interface polish across the app: drawn icons replace text symbols (close, star, chevrons, add), the sidebar
+  shows each layer's file type as a badge on its thumbnail along with the playback status, and the library grid
+  fits two columns even at the smallest window size.
+- The details panel shows a short prompt when nothing is selected instead of a column of disabled controls, and
+  tags wallpapers that are currently in use.
+- Better contrast in dark mode: text on accent-coloured buttons is now dark (5.7:1 instead of 3.2:1), and the
+  animated tag keeps white text readable.
+- Favourite stars sit on a dark disc so they stay visible on light images.
+
+### Added
+- Helpful empty states in the library: "No matches" with a *Clear search* button, and "No favorites here yet"
+  with *Show all*.
+- Keyboard navigation in the library grid shows a focus ring on the current tile.
+- Screen-reader names for the search box and the display, fit and mode selectors.
+
+### Fixed
+- Clicking the same tile again after switching tabs now fills the details panel.
+- Wrapped text in empty states and page headers no longer gets squeezed to its minimum width.
+
 ## [0.1.3] - 2026-11-13
 
 ### Changed
