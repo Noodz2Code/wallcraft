@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import (
@@ -17,7 +16,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QListView, QStyle, QStyledItemDelegate
 
-from ..library import Kind, MediaItem, norm
+from ..library import MediaItem, norm
 from . import style
 
 if TYPE_CHECKING:
@@ -76,22 +75,34 @@ class LibraryModel(QAbstractListModel):
 
 
 class LibraryFilter(QSortFilterProxyModel):
-    FILTERS = (("all", "All"), ("images", "Images"), ("live", "Live"), ("favorites", "Favorites"))
+    FILTERS = (("all", "All"), ("static", "Static"), ("animated", "Animated"), ("favorites", "Favorites"))
 
-    def __init__(self, ctx: AppContext, parent=None) -> None:
+    def __init__(self, ctx: AppContext, parent=None, kind: str = "all") -> None:
         super().__init__(parent)
         self._ctx = ctx
         self._text = ""
-        self._kind = "all"
-        ctx.store.changed.connect(lambda s: self.invalidateFilter() if s == "favorites" else None)
+        self._kind = kind
+        self._favorites_only = False
+        ctx.store.changed.connect(lambda s: self._change(lambda: None) if s == "favorites" else None)
+
+    def _change(self, apply) -> None:
+        """Update filter settings using Qt 6.10's begin/endFilterChange, or invalidateFilter before it."""
+        if hasattr(self, "beginFilterChange"):
+            self.beginFilterChange()
+            apply()
+            self.endFilterChange()
+        else:
+            apply()
+            self.invalidateFilter()
 
     def set_text(self, text: str) -> None:
-        self._text = text.strip().lower()
-        self.invalidateFilter()
+        self._change(lambda: setattr(self, "_text", text.strip().lower()))
 
     def set_kind(self, kind: str) -> None:
-        self._kind = kind
-        self.invalidateFilter()
+        self._change(lambda: setattr(self, "_kind", kind))
+
+    def set_favorites_only(self, value: bool) -> None:
+        self._change(lambda: setattr(self, "_favorites_only", value))
 
     def filterAcceptsRow(self, row: int, parent: QModelIndex) -> bool:  # noqa: N802
         item: MediaItem | None = self.sourceModel().item_at(row)
@@ -99,12 +110,12 @@ class LibraryFilter(QSortFilterProxyModel):
             return False
         if self._text and self._text not in item.path.lower():
             return False
-        if self._kind == "images":
-            return item.kind is Kind.IMAGE
-        if self._kind == "live":
+        if (self._favorites_only or self._kind == "favorites") and not self._ctx.library.is_favorite(item.path):
+            return False
+        if self._kind == "static":
+            return not item.is_live
+        if self._kind == "animated":
             return item.is_live
-        if self._kind == "favorites":
-            return self._ctx.library.is_favorite(item.path)
         return True
 
 
@@ -122,8 +133,7 @@ class ThumbDelegate(QStyledItemDelegate):
         return self.card
 
     def _in_use(self, path: str) -> bool:
-        key = norm(path)
-        return any(p and norm(p) == key for p in self._ctx.controller.current.values())
+        return norm(path) in self._ctx.controller.in_use
 
     def paint(self, painter: QPainter, option, index) -> None:
         item: MediaItem | None = index.data(ItemRole)
@@ -171,11 +181,9 @@ class ThumbDelegate(QStyledItemDelegate):
         badge_font.setPointSizeF(max(7.0, option.font.pointSizeF() * 0.78))
         badge_font.setBold(True)
         painter.setFont(badge_font)
-        x = thumb.x() + 8
-        if item.is_live:
-            tag = "LIVE" if item.kind is Kind.VIDEO else os.path.splitext(item.path)[1].lstrip(".").upper()
-            x = self._badge(painter, x, thumb.y() + 8, tag,
-                            QColor(0, 0, 0, 165), QColor("#FFFFFF"))
+        # File-type tag on every tile; animated formats get the accent colour.
+        tag_bg = QColor(t["animated_tag"]) if item.is_live else QColor(0, 0, 0, 160)
+        x = self._badge(painter, thumb.x() + 8, thumb.y() + 8, item.tag, tag_bg, QColor("#FFFFFF"))
         if self._in_use(item.path):
             self._badge(painter, x, thumb.y() + 8, "IN USE", QColor(t["accent"]), QColor(t["on_accent"]))
         if self._ctx.library.is_favorite(item.path):

@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QSizePolicy,
     QStackedWidget,
     QSystemTrayIcon,
     QVBoxLayout,
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from .. import APP_NAME
 from ..config import Mode
+from ..library import file_tag
 from ..paths import resource
 from .pages.library import LibraryPage
 from .pages.performance import PerformancePage
@@ -31,7 +33,7 @@ from .pages.settings import SettingsPage
 from .pages.slideshow import SlideshowPage
 from .pages.theme import ThemePage
 from .pages.timeofday import TimeOfDayPage
-from .widgets import ThumbLabel, label
+from .widgets import ThumbLabel, button, label
 
 if TYPE_CHECKING:
     from .context import AppContext
@@ -46,30 +48,77 @@ PAGES = (
 )
 
 
+class LayerRow(QFrame):
+    """One wallpaper layer in the sidebar: small thumbnail, layer name, file name and type tag."""
+
+    def __init__(self, ctx: AppContext, title: str, animated: bool) -> None:
+        super().__init__()
+        self._title = title
+        self._animated = animated
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(8)
+        self.thumb = ThumbLabel(ctx, QSize(64, 40))
+        row.addWidget(self.thumb)
+        text = QVBoxLayout()
+        text.setSpacing(1)
+        text.addWidget(label(title, "layerName"))
+        line = QHBoxLayout()
+        line.setSpacing(5)
+        self.tag = label("", "tagAnimated" if animated else "tag")
+        line.addWidget(self.tag)
+        self.name = label("", "small")
+        self.name.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        line.addWidget(self.name, 1)
+        text.addLayout(line)
+        row.addLayout(text, 1)
+        self.remove = button("✕", flat=True, tooltip="Remove the animated wallpaper")
+        self.remove.setFixedWidth(26)
+        self.remove.setVisible(False)
+        row.addWidget(self.remove, 0, Qt.AlignmentFlag.AlignTop)
+
+    def set_paths(self, paths: list[str], empty_text: str) -> None:
+        first = paths[0] if paths else ""
+        self.thumb.set_path(first)
+        self.tag.setVisible(bool(first))
+        self.tag.setText(file_tag(first) if first else "")
+        if first:
+            name = os.path.splitext(os.path.basename(first))[0]
+            extra = len(set(paths)) - 1
+            text = name + (f" +{extra}" if extra > 0 else "")
+        else:
+            text = empty_text
+        # Sidebar is 198px: thumbnail 64 + gap 8 + remove button 26 leaves ~100px for tag + name.
+        width = 100 - (self.tag.sizeHint().width() + 5 if first else 0)
+        self.name.setText(self.name.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, max(40, width)))
+        self.name.setToolTip("\n".join(dict.fromkeys(paths)))
+        self.remove.setVisible(self._animated and bool(first))
+
+
 class NowShowing(QFrame):
     def __init__(self, ctx: AppContext) -> None:
         super().__init__()
         self._ctx = ctx
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.setSpacing(6)
+        lay.setSpacing(8)
         lay.addWidget(label("NOW SHOWING", "small"))
-        self._thumb = ThumbLabel(ctx, QSize(198, 111))
-        lay.addWidget(self._thumb)
-        self._name = label("", "small")
-        self._name.setMaximumWidth(198)
-        lay.addWidget(self._name)
-        lay.addSpacing(6)
+        self._animated = LayerRow(ctx, "Animated", animated=True)
+        self._animated.remove.clicked.connect(lambda: ctx.controller.clear_animated())
+        self._static = LayerRow(ctx, "Static", animated=False)
+        lay.addWidget(self._animated)
+        lay.addWidget(self._static)
+        self._live = label("", "small")
+        self._live.setWordWrap(True)
+        self._live.setMaximumWidth(198)
+        lay.addWidget(self._live)
+        lay.addSpacing(4)
         lay.addWidget(label("MODE", "small"))
         self._mode = QComboBox()
         for mode in Mode:
             self._mode.addItem(mode.label, mode)
         self._mode.currentIndexChanged.connect(lambda _i: ctx.controller.set_mode(self._mode.currentData()))
         lay.addWidget(self._mode)
-        self._live = label("", "small")
-        self._live.setWordWrap(True)
-        self._live.setMaximumWidth(198)
-        lay.addWidget(self._live)
 
         ctx.controller.wallpaperChanged.connect(self._update)
         ctx.controller.liveStatusChanged.connect(self._update)
@@ -78,17 +127,12 @@ class NowShowing(QFrame):
 
     def _update(self) -> None:
         c = self._ctx.controller
-        paths = [p for p in (c.current.get(m.id, "") for m in c.monitors) if p]
-        first = paths[0] if paths else ""
-        self._thumb.set_path(first)
-        if first:
-            name = os.path.splitext(os.path.basename(first))[0]
-            extra = len(set(paths)) - 1
-            text = name + (f"  +{extra} more" if extra > 0 else "")
-        else:
-            text = "Nothing set yet"
-        self._name.setText(self._name.fontMetrics().elidedText(text, Qt.TextElideMode.ElideRight, 198))
-        self._name.setToolTip("\n".join(dict.fromkeys(paths)))
+
+        def paths(layer: dict[str, str]) -> list[str]:
+            return [p for p in (layer.get(m.id, "") for m in c.monitors) if p]
+
+        self._static.set_paths(paths(c.current_static), "Not set: Windows keeps its own")
+        self._animated.set_paths(paths(c.current_live), "None")
         self._mode.blockSignals(True)
         self._mode.setCurrentIndex(self._mode.findData(self._ctx.store.config.mode))
         self._mode.blockSignals(False)

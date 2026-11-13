@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     posters = PosterService(paths.poster_dir())
     thumbs = ThumbnailCache(paths.thumbnail_dir(), posters)
     library = LibraryService(store)
-    controller = Controller(store, backend, library, posters)
+    controller = Controller(store, backend, library)
     ctx = AppContext(store=store, backend=backend, library=library, thumbs=thumbs, controller=controller)
 
     dark_now: list[bool | None] = [None]

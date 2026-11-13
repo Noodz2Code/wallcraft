@@ -27,6 +27,7 @@ class Tray(QSystemTrayIcon):
         menu.addSeparator()
         menu.addAction("Next wallpaper", lambda: ctx.controller.next_wallpaper(1))
         menu.addAction("Previous wallpaper", lambda: ctx.controller.next_wallpaper(-1))
+        self._remove_live = menu.addAction("Remove animated wallpaper", ctx.controller.clear_animated)
         self._pause = QAction("Pause live wallpapers", menu)
         self._pause.setCheckable(True)
         self._pause.triggered.connect(lambda _c: ctx.controller.toggle_pause())
@@ -69,7 +70,15 @@ class Tray(QSystemTrayIcon):
         self._mode_actions[mode].setChecked(True)
         self._pause.setChecked(c.user_paused)
         self._pause.setEnabled(c.live.has_assignments)
-        current = next((p for p in c.current.values() if p), "")
-        name = os.path.splitext(os.path.basename(current))[0] if current else "no wallpaper"
-        tip = f"{APP_NAME} · {mode.label}\n{name}"
+        self._remove_live.setEnabled(c.live.has_assignments)
+
+        def first(layer: dict[str, str]) -> str:
+            path = next((p for p in layer.values() if p), "")
+            return os.path.splitext(os.path.basename(path))[0] if path else ""
+
+        lines = [f"{APP_NAME} · {mode.label}"]
+        if first(c.current_live):
+            lines.append(f"Animated: {first(c.current_live)}")
+        lines.append(f"Static: {first(c.current_static) or 'not set'}")
+        tip = "\n".join(lines)
         self.setToolTip(tip[:120])

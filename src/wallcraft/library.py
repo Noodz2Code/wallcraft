@@ -93,6 +93,11 @@ def is_live(path: str) -> bool:
     return kind is not None and kind.is_live
 
 
+def file_tag(path: str) -> str:
+    """Short file-type label shown on tiles, e.g. "JPG", "MP4", "WEBP"."""
+    return os.path.splitext(path)[1].lstrip(".").upper() or "FILE"
+
+
 def norm(path: str) -> str:
     """Canonical form for comparing paths (case-insensitive on Windows)."""
     return os.path.normcase(os.path.abspath(path))
@@ -112,6 +117,10 @@ class MediaItem:
     @property
     def is_live(self) -> bool:
         return self.kind.is_live
+
+    @property
+    def tag(self) -> str:
+        return file_tag(self.path)
 
     @classmethod
     def from_path(cls, path: str) -> MediaItem | None:

@@ -29,6 +29,8 @@ LIGHT = {
     "warning": "#B86E00",
     "danger": "#C93C3C",
     "thumb_bg": "#E3E5EA",
+    "animated_tag": "#E67C3AED",  # Qt order: #AARRGGBB
+    "animated": "#7C3AED",
 }
 
 DARK = {
@@ -49,6 +51,8 @@ DARK = {
     "warning": "#E0A030",
     "danger": "#EF6B6B",
     "thumb_bg": "#26282E",
+    "animated_tag": "#E68B5CF6",  # Qt order: #AARRGGBB
+    "animated": "#8B5CF6",
 }
 
 _current: dict[str, str] = LIGHT
@@ -110,6 +114,17 @@ QFrame#card {{ background: {t['surface']}; border: 1px solid {t['border']}; bord
 QFrame#banner {{ background: {t['accent_soft']}; border-radius: 10px; }}
 QFrame#banner[active="true"] {{ background: {t['success_soft']}; }}
 QFrame#banner QLabel {{ background: transparent; }}
+QFrame#segmented {{ background: {t['surface_alt']}; border: 1px solid {t['border']}; border-radius: 9px; }}
+QFrame#segmented QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 7px;
+                                padding: 5px 16px; color: {t['muted']}; font-weight: 600; }}
+QFrame#segmented QPushButton:hover {{ color: {t['text']}; }}
+QFrame#segmented QPushButton:checked {{ background: {t['surface']}; color: {t['text']}; border-color: {t['border']}; }}
+QLabel#tag {{ background: {t['surface_alt']}; border: 1px solid {t['border']}; color: {t['text']};
+              border-radius: 6px; padding: 1px 7px; font-size: 8pt; font-weight: 700; }}
+QLabel#tagAnimated {{ background: {t['animated']}; color: #FFFFFF; border-radius: 6px;
+                      padding: 1px 7px; font-size: 8pt; font-weight: 700; }}
+QLabel#layerName {{ font-weight: 600; }}
+QWidget#detailsContent {{ background: transparent; }}
 QFrame#separator {{ background: {t['border']}; max-height: 1px; min-height: 1px; border: none; }}
 
 QPushButton {{ background: {t['surface']}; border: 1px solid {t['border']}; border-radius: 8px;

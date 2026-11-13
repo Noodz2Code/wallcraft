@@ -65,3 +65,11 @@ def test_corrupt_file_is_backed_up(tmp_path):
     assert isinstance(cfg, Config)
     assert not path.exists()
     assert len(list(tmp_path.glob("config.json.corrupt-*"))) == 1
+
+
+def test_animated_manual_entries_migrate_to_their_own_layer(tmp_path):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"manual": {"*": "C:/w/a.jpg", "m2": "C:/w/loop.mp4"}}))
+    cfg = load_config(path)
+    assert cfg.manual == {"*": "C:/w/a.jpg"}
+    assert cfg.manual_live == {"m2": "C:/w/loop.mp4"}

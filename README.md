@@ -26,6 +26,11 @@
 - Set a different wallpaper on each monitor, with every Windows fit mode: fill, fit, stretch, center, tile and span.
 - WebP and other formats Windows can't show natively are converted automatically.
 
+**Two layers: static and animated**
+- Every monitor has a **static** wallpaper (your regular Windows wallpaper: JPG, PNG, WebP…) and an optional **animated** one (MP4, WebM, GIF…) playing on top.
+- Setting an animated wallpaper never replaces your static one. Remove the animation, or let a battery rule stop it, and your static wallpaper is right there.
+- The library has separate **Static** and **Animated** tabs, and every wallpaper is tagged with its file type.
+
 **Live wallpapers**
 - Videos and animated images play *behind your desktop icons*, on one or all monitors:
   - **Video:** MP4, M4V, MOV, MKV, WebM, AVI, WMV, ASF, MPG/MPEG, M2V, VOB, TS, M2TS, MTS, FLV, F4V, 3GP, 3G2, OGV
@@ -35,7 +40,6 @@
   \*AV1 needs a graphics card with AV1 decoding (most from 2020 onward).
 - Works like Lively Wallpaper: each live wallpaper plays in its own [mpv](https://mpv.io) process with hardware video decoding, placed behind the desktop icons. Supports Windows 10 and Windows 11, including the 24H2 desktop.
 - If a player crashes, or Explorer restarts, Wallcraft restarts the player and puts it back in place.
-- A still frame from the video is set as the regular Windows wallpaper underneath, so the desktop never goes blank when playback stops or Wallcraft quits.
 - Muted by default. With several monitors, only one plays sound.
 
 **Modes**
@@ -162,7 +166,12 @@ src/wallcraft/
 ```
 
 - **Static wallpapers** use the `IDesktopWallpaper` COM interface (per-monitor), falling back to `SystemParametersInfo`.
-- **Live wallpapers** work like Lively Wallpaper. Each one runs in its own mpv process (`live/mpv.py`), controlled through mpv's JSON IPC (play, pause, volume, fit). Wallcraft asks Explorer to create a window layer (WorkerW) between the wallpaper and the icons and moves mpv's window into it (`platform/windows/desktop.py`). Both the classic layout and the Windows 11 24H2 layout are handled, following Lively's implementation.
+- **Two layers: static and animated**
+- Every monitor has a **static** wallpaper (your regular Windows wallpaper: JPG, PNG, WebP…) and an optional **animated** one (MP4, WebM, GIF…) playing on top.
+- Setting an animated wallpaper never replaces your static one. Remove the animation, or let a battery rule stop it, and your static wallpaper is right there.
+- The library has separate **Static** and **Animated** tabs, and every wallpaper is tagged with its file type.
+
+**Live wallpapers** work like Lively Wallpaper. Each one runs in its own mpv process (`live/mpv.py`), controlled through mpv's JSON IPC (play, pause, volume, fit). Wallcraft asks Explorer to create a window layer (WorkerW) between the wallpaper and the icons and moves mpv's window into it (`platform/windows/desktop.py`). Both the classic layout and the Windows 11 24H2 layout are handled, following Lively's implementation.
 - A Windows job object ends the player processes together with Wallcraft, even after a crash.
 - All Windows calls go through `ctypes`, so there are no compiled extensions or pywin32 dependency.
 

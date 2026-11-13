@@ -190,7 +190,9 @@ class Config:
     version: int = CONFIG_VERSION
     mode: Mode = Mode.MANUAL
     # Manual assignments: monitor id -> path. The key "*" applies to every monitor.
+    # Two independent layers: the static Windows wallpaper, and an animated one drawn on top.
     manual: dict[str, str] = field(default_factory=dict)
+    manual_live: dict[str, str] = field(default_factory=dict)
     library_folders: list[str] = field(default_factory=list)
     library_files: list[str] = field(default_factory=list)
     library_excluded: list[str] = field(default_factory=list)
@@ -294,7 +296,14 @@ def _clamp(value: int, lo: int, hi: int) -> int:
 
 
 def normalize(cfg: Config) -> Config:
-    """Clamp numeric values into sane ranges."""
+    """Clamp numeric values into sane ranges and migrate older settings."""
+    from .library import is_live
+
+    # Older versions stored animated wallpapers with static ones; move them to their own layer.
+    for key, path in list(cfg.manual.items()):
+        if path and is_live(path):
+            cfg.manual_live.setdefault(key, path)
+            del cfg.manual[key]
     cfg.version = CONFIG_VERSION
     cfg.slideshow.interval_minutes = _clamp(cfg.slideshow.interval_minutes, 1, 7 * 24 * 60)
     p = cfg.performance

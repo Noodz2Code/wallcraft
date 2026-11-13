@@ -7,7 +7,6 @@ import os
 import threading
 import time
 from datetime import datetime
-from functools import partial
 
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
@@ -20,7 +19,6 @@ from .rules import Decision, SystemState, evaluate
 from .schedule import Resolution, effective_location, resolve, theme_at
 from .services.config_store import ConfigStore
 from .services.library_service import LibraryService
-from .services.posters import PosterService
 from .slideshow import Slideshow
 
 log = logging.getLogger(__name__)
@@ -41,26 +39,28 @@ class Controller(QObject):
         store: ConfigStore,
         backend: Backend,
         library: LibraryService,
-        posters: PosterService,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
         self.store = store
         self.backend = backend
         self.library = library
-        self.posters = posters
         self.live = LiveHost(backend, self)
         self.live.changed.connect(self.liveStatusChanged)
+        self.live.changed.connect(self._sync_statics)
 
         self.monitors: list[Monitor] = []
-        self.current: dict[str, str] = {}  # monitor id -> path actually applied
+        # What each monitor should show, per layer (monitor id -> path, "" for nothing).
+        self.current_static: dict[str, str] = {}
+        self.current_live: dict[str, str] = {}
+        self._static_applied: dict[str, tuple[str, object]] = {}  # monitor id -> (path, fit) on the desktop
+        self._mode_layer: str | None = None  # which layer the automatic mode currently drives
         self.system_state = SystemState()
         self.decisions: dict[str, Decision] = {}
         self.tod_resolution: Resolution | None = None
         self._os_theme = "light"
         self._user_paused = False
         self._applied_sig: tuple | None = None
-        self._apply_token = 0
         self._slideshow = Slideshow()
         self._started = False
 
@@ -114,6 +114,7 @@ class Controller(QObject):
         self._tick.stop()
         self._poll.stop()
         self.live.stop_all(wait=True)
+        self._sync_statics()  # apply any static change that was waiting under the video
         self.store.save_now()
 
     def _watch_screen(self, screen, initial: bool = False) -> None:
@@ -141,17 +142,46 @@ class Controller(QObject):
             self.cfg.mode = mode
             self.store.mark_dirty("mode")
 
+    @property
+    def in_use(self) -> set[str]:
+        """Normalised paths shown on any monitor, on either layer."""
+        return {norm(p) for p in (*self.current_static.values(), *self.current_live.values()) if p}
+
     def set_wallpaper(self, path: str, monitor_id: str | None = None) -> None:
-        """Apply a wallpaper now (switches to Manual mode)."""
+        """Show a wallpaper now. Static files go to the static layer, animated files to the animated
+        layer; the other layer is left alone."""
+        cfg = self.cfg
+        live = is_live(path)
+        layer_name, layer_kind = ("manual_live", "live") if live else ("manual", "static")
+        current = self.current_live if live else self.current_static
+        # An automatic mode that drives this layer would override the choice, so switch to Manual.
+        takes_over = cfg.mode is not Mode.MANUAL and self._mode_layer == layer_kind
+        if monitor_id is None or len(self.monitors) <= 1:
+            layer = {ALL: path}
+        else:
+            layer = ({mid: p for mid, p in current.items() if p} if takes_over
+                     else dict(getattr(cfg, layer_name)))
+            layer[monitor_id] = path
+        setattr(cfg, layer_name, layer)
+        if takes_over:
+            cfg.mode = Mode.MANUAL
+        self.store.mark_dirty("manual")
+        self.refresh()
+        if not live:
+            targets = [monitor_id] if monitor_id else [m.id for m in self.monitors]
+            if any(self.current_live.get(mid) for mid in targets):
+                self.message.emit("Static wallpaper set. It's underneath the animated wallpaper and shows "
+                                  "when the animation is removed or stopped.")
+
+    def clear_animated(self, monitor_id: str | None = None) -> None:
+        """Remove the animated layer (everywhere, or on one monitor) to reveal the static wallpaper."""
         cfg = self.cfg
         if monitor_id is None or len(self.monitors) <= 1:
-            cfg.manual = {ALL: path}
+            cfg.manual_live = {}
         else:
-            if cfg.mode is not Mode.MANUAL:
-                # Keep what the other displays show right now.
-                cfg.manual = {mid: p for mid, p in self.current.items() if p}
-            cfg.manual[monitor_id] = path
-        cfg.mode = Mode.MANUAL
+            cfg.manual_live = {mid: p for mid, p in self.current_live.items() if p and mid != monitor_id}
+        if cfg.mode is not Mode.MANUAL and self._mode_layer == "live":
+            cfg.mode = Mode.MANUAL
         self.store.mark_dirty("manual")
         self.refresh()
 
@@ -162,9 +192,9 @@ class Controller(QObject):
             self.refresh()
             return
         if cfg.mode is Mode.MANUAL:
-            items = [i.path for i in self.library.items]
+            items = [i.path for i in self.library.items if not i.is_live]
             if not items:
-                self.message.emit("Your library is empty.")
+                self.message.emit("There are no static wallpapers in your library.")
                 return
             cur = cfg.manual.get(ALL) or next(iter(cfg.manual.values()), "")
             keys = [norm(p) for p in items]
@@ -274,109 +304,109 @@ class Controller(QObject):
             self.set_os_theme(want)
 
     # Core ----------------------------------------------------------------------- #
-    def desired(self) -> dict[str, str]:
+    def _mode_wallpaper(self) -> str | None:
         cfg = self.cfg
-        if cfg.mode is Mode.MANUAL:
-            return dict(cfg.manual)
         if cfg.mode is Mode.SLIDESHOW:
-            path = self._slideshow_wallpaper()
-        elif cfg.mode is Mode.TIME_OF_DAY:
-            path = self._time_of_day_wallpaper()
-        else:
+            return self._slideshow_wallpaper()
+        if cfg.mode is Mode.TIME_OF_DAY:
+            return self._time_of_day_wallpaper()
+        if cfg.mode is Mode.THEME:
             th = cfg.theme
             primary, other = ((th.dark_wallpaper, th.light_wallpaper) if self._os_theme == "dark"
                               else (th.light_wallpaper, th.dark_wallpaper))
-            path = primary or other
-        return {ALL: path} if path else {}
+            return primary or other or None
+        return None
+
+    def desired(self) -> tuple[dict[str, str], dict[str, str]]:
+        """(static layer, animated layer); key "*" means every monitor.
+
+        Manual choices are the base of both layers. An automatic mode replaces only the layer that
+        matches the kind of wallpaper it picked, so an animated wallpaper never replaces the static
+        one underneath it, and vice versa.
+        """
+        static, live = dict(self.cfg.manual), dict(self.cfg.manual_live)
+        path = self._mode_wallpaper()
+        self._mode_layer = None
+        if path:
+            if is_live(path):
+                live, self._mode_layer = {ALL: path}, "live"
+            else:
+                static, self._mode_layer = {ALL: path}, "static"
+        return static, live
 
     def refresh(self, force: bool = False) -> None:
         if not self._started:
             return
         self._apply_auto_theme()
         try:
-            self._apply(self.desired(), force)
+            static, live = self.desired()
+            self._apply(static, live, force)
         except Exception:  # noqa: BLE001 - keep the engine alive no matter what
             log.exception("Applying wallpaper failed")
             self.message.emit("Applying the wallpaper failed. See the log for details.")
 
-    def _apply(self, desired: dict[str, str], force: bool) -> None:
-        if not self.monitors:
-            self.monitors = self.backend.list_monitors()
-        per: dict[str, str] = {}
+    def _per_monitor(self, desired: dict[str, str]) -> dict[str, str]:
+        per = {}
         for mon in self.monitors:
             path = desired.get(mon.id) or desired.get(ALL) or ""
             per[mon.id] = path if path and os.path.isfile(path) else ""
-        missing = {p for p in desired.values() if p and not os.path.isfile(p)}
+        return per
+
+    def _apply(self, static_desired: dict[str, str], live_desired: dict[str, str], force: bool) -> None:
+        if not self.monitors:
+            self.monitors = self.backend.list_monitors()
+        statics = self._per_monitor(static_desired)
+        live_paths = self._per_monitor(live_desired)
         fit = self.cfg.general.fit
-        sig = (tuple(sorted(per.items())), fit, tuple((m.id, m.rect) for m in self.monitors))
+        sig = (tuple(sorted(statics.items())), tuple(sorted(live_paths.items())), fit,
+               tuple((m.id, m.rect) for m in self.monitors))
         if sig == self._applied_sig and not force:
             return
         self._applied_sig = sig
-        for p in missing:
+        if force:
+            self._static_applied.clear()
+        for p in {p for p in (*static_desired.values(), *live_desired.values()) if p and not os.path.isfile(p)}:
             log.warning("Wallpaper file not found: %s", p)
             self.message.emit(f"File not found: {os.path.basename(p)}")
 
-        statics = {mid: p for mid, p in per.items() if p and not is_live(p)}
         lives: dict[str, MediaItem] = {}
-        for mid, p in per.items():
-            if p and is_live(p):
-                item = self.library.find(p) or MediaItem.from_path(p)
-                if item is not None:
-                    lives[mid] = item
-
-        # Order matters on Windows 11 24H2, where changing the static wallpaper destroys the layer
-        # a video sits in (see platform/windows/desktop.py). So, like Lively:
-        #   1. close live wallpapers that are going away (unchanged ones keep playing),
-        #   2. set static wallpapers, plus each video's still frame as the wallpaper under it,
-        #   3. only then start and attach the new videos.
-        keep = {mid: item for mid, item in lives.items() if self.live.current_item(mid) == item}
-        self.live.set_assignments(keep, self.monitors, fit)
-
-        groups: dict[str, list[str]] = {}
-        for mid, item in lives.items():
-            if mid not in keep:
-                groups.setdefault(item.path, []).append(mid)
-        pending: dict[str, list[str]] = {}
-        for path, mids in groups.items():
-            cached = self.posters.cached(path)
-            if cached:
-                statics.update({mid: cached for mid in mids})
-            else:
-                pending[path] = mids
-        self._set_statics(statics)
+        for mid, p in live_paths.items():
+            item = (self.library.find(p) or MediaItem.from_path(p)) if p else None
+            if item is not None and item.is_live:
+                lives[mid] = item
+        self.current_static = statics
+        self.current_live = {mid: item.path for mid, item in lives.items()}
 
         self.live.set_audio(self.cfg.performance.muted, self.cfg.performance.volume)
-        self.current = per
-        log.info("Applied wallpapers: %s", {k: os.path.basename(v) for k, v in per.items()})
-        self.wallpaperChanged.emit()
-
-        self._apply_token += 1
-        token = self._apply_token
-        if not pending:
-            self._start_live(lives, fit)
-            return
-        remaining = set(pending)
-
-        def on_poster(path: str, poster: str | None) -> None:
-            if token != self._apply_token:
-                return  # a newer wallpaper was applied meanwhile
-            remaining.discard(path)
-            if poster:
-                self._set_statics({mid: poster for mid in pending[path]})
-            if not remaining:
-                self._start_live(lives, fit)
-
-        for path in pending:
-            # Always answers, with None after a timeout, so videos start even without a still frame.
-            self.posters.request(path, partial(on_poster, path))
-
-    def _start_live(self, lives: dict[str, MediaItem], fit) -> None:
         self.live.set_assignments(lives, self.monitors, fit)
+        self._sync_statics()
+        log.info("Applied wallpapers: static %s, animated %s",
+                 {k: os.path.basename(v) for k, v in statics.items()},
+                 {k: os.path.basename(v) for k, v in self.current_live.items()})
+        self.wallpaperChanged.emit()
         self._poll_system()
 
-    def _set_statics(self, assign: dict[str, str]) -> None:
-        if not assign:
-            return
+    def _sync_statics(self) -> None:
+        """Put the static layer on the desktop, except where an animated wallpaper covers it.
+
+        Under a running animation the static wallpaper can't be seen, and on Windows 11 24H2
+        changing it destroys the desktop layer the video sits in. Such changes wait until the
+        animated layer is removed or stopped (or Wallcraft quits), then apply.
+        """
+        fit = self.cfg.general.fit
+        todo = {}
+        for mon in self.monitors:
+            target = self.current_static.get(mon.id, "")
+            if not target or self._static_applied.get(mon.id) == (target, fit):
+                continue
+            if self.live.state(mon.id) not in ("", "stopped"):
+                continue
+            todo[mon.id] = target
+        if todo and self._set_statics(todo):
+            for mid, path in todo.items():
+                self._static_applied[mid] = (path, fit)
+
+    def _set_statics(self, assign: dict[str, str]) -> bool:
         fit = self.cfg.general.fit
         all_ids = {m.id for m in self.monitors}
         paths = set(assign.values())
@@ -386,9 +416,11 @@ class Controller(QObject):
             else:
                 for mid, p in assign.items():
                     self.backend.set_static_wallpaper(p, fit, mid)
+            return True
         except OSError as exc:
             log.error("Setting wallpaper failed: %s", exc)
             self.message.emit(f"Couldn't set wallpaper: {exc}")
+            return False
 
     # Rules ---------------------------------------------------------------------- #
     def _poll_system(self) -> None:

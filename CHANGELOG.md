@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-13
+
+### Changed
+- **Two wallpaper layers.** Each monitor has a static layer (your regular Windows wallpaper) and an animated
+  layer that plays on top. Setting an animated wallpaper no longer replaces your static wallpaper. When the
+  animation is removed, or stopped by a battery or performance rule, your own static wallpaper is underneath.
+- Changes to the static layer made while an animation covers it are applied once the animation stops. They're
+  hidden anyway, and on Windows 11 24H2 they would disturb the video.
+- Slideshow, time-of-day and theme modes change whichever layer matches the wallpaper they pick.
+
+### Added
+- Library is split into **Static** and **Animated** tabs, each with a count and its own empty-state hint, plus a
+  Favorites filter.
+- Every wallpaper shows its file type (JPG, PNG, MP4, WEBP, GIF…). Animated formats have a violet tag, and the
+  details panel shows which layer it goes on.
+- The sidebar shows both layers, with a button to remove the animated wallpaper. Also available from the tray
+  menu and the library.
+
+### Fixed
+- The details panel no longer overlaps itself when the window is short (it now scrolls).
+
 ## [0.1.2] - 2026-11-13
 
 ### Changed
