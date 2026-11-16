@@ -32,6 +32,9 @@ python -m pytest
 - Add or update tests for logic changes. Scheduling, rules, config and slideshow code are plain Python and easy to test.
 - Platform-specific code belongs in `platform/`. The rest of the app talks to the `Backend` interface.
 - If you change UI text, keep it short and in sentence case.
+- Delayed calls must pass a context object: `QTimer.singleShot(ms, self, self.method)`, not
+  `QTimer.singleShot(ms, self.method)`. Qt then cancels the timer if the object is destroyed first;
+  without it, the callback runs on a deleted object and crashes.
 
 ## Code layout
 

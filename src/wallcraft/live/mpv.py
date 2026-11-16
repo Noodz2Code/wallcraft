@@ -251,7 +251,7 @@ class MpvPlayer(QObject):
         self._poll.stop()
         if self.alive():
             self._send(["quit"])
-            QTimer.singleShot(1500, self._kill)
+            QTimer.singleShot(1500, self, self._kill)
         # Graceful close: pending writes (the quit command) are sent first.
         self._sock.disconnectFromServer()
 

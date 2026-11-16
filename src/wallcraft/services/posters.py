@@ -63,14 +63,14 @@ class PosterService(QObject):
     def request(self, path: str, callback: PosterCallback) -> None:
         hit = self.cached(path)
         if hit:
-            QTimer.singleShot(0, lambda: callback(hit))
+            QTimer.singleShot(0, self, lambda: callback(hit))
             return
         if path in self._callbacks:
             self._callbacks[path].append(callback)
             return
         self._callbacks[path] = [callback]
         self._queue.append(path)
-        QTimer.singleShot(0, self._next)
+        QTimer.singleShot(0, self, self._next)
 
     # Worker ------------------------------------------------------------------- #
     def _next(self) -> None:
@@ -167,4 +167,4 @@ class PosterService(QObject):
                 cb(result)
             except Exception:  # noqa: BLE001
                 log.exception("Poster callback failed")
-        QTimer.singleShot(0, self._next)
+        QTimer.singleShot(0, self, self._next)

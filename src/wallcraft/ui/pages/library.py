@@ -314,9 +314,12 @@ class LibraryPage(QWidget):
         add_folder.clicked.connect(self._add_folder)
         add_files = button("Add files…")
         add_files.clicked.connect(self._add_files)
+        refresh = button("Refresh", icon=style.icon("refresh"),
+                         tooltip="Rescan your folders and re-apply every wallpaper (F5)")
+        refresh.clicked.connect(ctx.refresh_all)
         folders = button("Folders…")
         folders.clicked.connect(lambda: FoldersDialog(ctx, self).exec())
-        for b in (folders, add_files, add_folder):
+        for b in (refresh, folders, add_files, add_folder):
             head.addWidget(b, 0, Qt.AlignmentFlag.AlignBottom)
         root.addLayout(head)
 

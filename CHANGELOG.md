@@ -4,6 +4,23 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.5] - 2026-11-16
+
+### Added
+- **Refresh** button in the Library (also **F5** and the tray menu). It rescans your folders, looks up the
+  displays and the desktop layer again, restarts animated wallpapers and re-applies static ones. Use it if a
+  wallpaper looks wrong or stopped showing.
+- **Check for updates**, in Settings → Updates and the tray menu. Wallcraft also checks automatically once a day
+  (you can turn this off). When a new version is out, an **Update to x.y.z** button appears in the sidebar and
+  the tray shows a notification. The update window shows the release notes and downloads the right file for how
+  you installed Wallcraft (installer, portable exe or zip). You can also skip a version.
+- The update check only asks GitHub for the latest release. Nothing about you or your computer is sent, and
+  nothing is installed without you.
+
+### Fixed
+- Wallcraft could crash on quit, or while switching animated wallpapers quickly. A closed player could be
+  deleted twice, and delayed actions could run on an object that was already gone.
+
 ## [0.1.4] - 2026-11-13
 
 ### Changed

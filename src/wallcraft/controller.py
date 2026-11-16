@@ -203,6 +203,19 @@ class Controller(QObject):
             return
         self.message.emit(f"Next/previous isn't available in {cfg.mode.label} mode.")
 
+    def reload_all(self) -> None:
+        """Refresh everything: rescan the library, look up the displays and Explorer's desktop
+        layer again, restart the animated wallpapers and re-apply the static ones."""
+        log.info("Refreshing all wallpapers")
+        self.monitors = self.backend.list_monitors()
+        self.backend.reset_desktop()
+        self.library.rescan()
+        self.live.restart_all()
+        self._applied_sig = None
+        self._static_applied.clear()
+        self.refresh(force=True)
+        self.message.emit("Wallpapers refreshed.")
+
     def toggle_pause(self) -> None:
         self._user_paused = not self._user_paused
         self._poll_system()
@@ -224,7 +237,7 @@ class Controller(QObject):
                 log.exception("Failed to switch Windows theme")
 
         threading.Thread(target=work, name="theme-switch", daemon=True).start()
-        QTimer.singleShot(800, self._poll_system)
+        QTimer.singleShot(800, self, self._poll_system)
 
     # Slideshow ------------------------------------------------------------------ #
     def slideshow_items(self) -> list[str]:

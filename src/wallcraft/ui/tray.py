@@ -28,6 +28,7 @@ class Tray(QSystemTrayIcon):
         menu.addAction("Next wallpaper", lambda: ctx.controller.next_wallpaper(1))
         menu.addAction("Previous wallpaper", lambda: ctx.controller.next_wallpaper(-1))
         self._remove_live = menu.addAction("Remove animated wallpaper", ctx.controller.clear_animated)
+        menu.addAction("Refresh wallpapers", ctx.refresh_all)
         self._pause = QAction("Pause live wallpapers", menu)
         self._pause.setCheckable(True)
         self._pause.triggered.connect(lambda _c: ctx.controller.toggle_pause())
@@ -44,6 +45,11 @@ class Tray(QSystemTrayIcon):
             modes.addAction(act)
             self._mode_actions[mode] = act
         menu.addSeparator()
+        if ctx.updates is not None:
+            self._update_action = menu.addAction("Check for updates…", lambda: ctx.updates.check(manual=True))
+            ctx.updates.available.connect(self._on_update_available)
+            self.messageClicked.connect(self._on_message_clicked)
+        self._update_pending = False
         menu.addAction("Quit Wallcraft", on_quit)
         self._menu = menu  # keep a reference; QSystemTrayIcon doesn't own it
         self.setContextMenu(menu)
@@ -56,6 +62,19 @@ class Tray(QSystemTrayIcon):
             APP_NAME, "Wallcraft is still running here. Quit from this menu.",
             QSystemTrayIcon.MessageIcon.Information, 4000)
         self._sync()
+
+    def _on_update_available(self, release, manual: bool) -> None:
+        self._update_action.setText(f"Update to {release.version}…")
+        if not manual:  # a manual check already shows the dialog
+            self._update_pending = True
+            self.showMessage(f"{APP_NAME} {release.version} is available",
+                             "Click to see what's new.", QSystemTrayIcon.MessageIcon.Information, 8000)
+
+    def _on_message_clicked(self) -> None:
+        if self._update_pending:
+            self._update_pending = False
+            self._window.show_and_raise()
+            self._window.open_update()
 
     def _on_activated(self, reason) -> None:
         if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):

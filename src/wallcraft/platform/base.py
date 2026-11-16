@@ -64,6 +64,9 @@ class Backend(ABC):
     def refresh_desktop(self) -> None:
         """Repaint the desktop after live windows go away."""
 
+    def reset_desktop(self) -> None:
+        """Forget cached desktop window handles so they are looked up again."""
+
     def find_process_window(self, pid: int, class_name: str = "mpv") -> int | None:
         """Top-level window of a child process (used to embed the mpv player)."""
         return None

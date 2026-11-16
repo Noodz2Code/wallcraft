@@ -112,6 +112,9 @@ class WindowsBackend(Backend):
                 return False
         return desktop.ensure(hwnd, monitor.rect, host)
 
+    def reset_desktop(self) -> None:
+        self._host = None  # find Explorer's WorkerW again on the next attach
+
     def refresh_desktop(self) -> None:
         desktop.refresh_wallpaper(self._host)
 

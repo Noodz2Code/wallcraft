@@ -226,6 +226,20 @@ def test_setting_static_in_slideshow_switches_to_manual(engine):
     assert store.config.mode is Mode.MANUAL
 
 
+def test_reload_all_reapplies_static_and_restarts_animation(engine):
+    ctl, backend, _store, files = engine
+    ctl.set_wallpaper(files["a"])
+    ctl.set_wallpaper(files["v1"], "m2")
+    assert wait_until(lambda: ctl.live.state("m2") == "playing")
+    old_player = ctl.live._players["m2"]
+    calls = len(backend.static)
+    ctl.reload_all()
+    assert len(backend.static) > calls, "static wallpaper should be applied again"
+    assert backend.static[-1] == ("a.png", "m1")  # m2 is covered by the animation, so it waits
+    assert wait_until(lambda: ctl.live.state("m2") == "playing")
+    assert ctl.live._players["m2"] is not old_player, "animated wallpaper should be restarted"
+
+
 def test_main_window_builds(engine):
     from wallcraft import paths
     from wallcraft.services.thumbnails import ThumbnailCache

@@ -1,6 +1,6 @@
 """Wallcraft - a wallpaper manager for Windows with live wallpapers and smart switching."""
 
-__version__ = "0.1.4"
+__version__ = "0.1.5"
 
 APP_NAME = "Wallcraft"
 APP_ID = "wallcraft"

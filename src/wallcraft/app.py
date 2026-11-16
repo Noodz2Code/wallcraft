@@ -123,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     from .services.library_service import LibraryService
     from .services.posters import PosterService
     from .services.thumbnails import ThumbnailCache
+    from .services.updater import UpdateChecker
     from .single_instance import SingleInstance
     from .ui import style
     from .ui.context import AppContext
@@ -150,7 +151,9 @@ def main(argv: list[str] | None = None) -> int:
     thumbs = ThumbnailCache(paths.thumbnail_dir(), posters)
     library = LibraryService(store)
     controller = Controller(store, backend, library)
-    ctx = AppContext(store=store, backend=backend, library=library, thumbs=thumbs, controller=controller)
+    updates = UpdateChecker(store)
+    ctx = AppContext(store=store, backend=backend, library=library, thumbs=thumbs, controller=controller,
+                     updates=updates)
 
     dark_now: list[bool | None] = [None]
 
@@ -196,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         log.info("Smoke test finished with %s", result[0])
         return result[0]
 
+    updates.start()  # first automatic check ~20 s after startup, then at most once a day
     hidden = (args.minimized or args.autostart or store.config.general.start_minimized) and tray is not None
     if not hidden:
         window.show()

@@ -174,6 +174,8 @@ class GeneralConfig:
     close_to_tray: bool = True
     full_quality_jpeg: bool = False
     tray_hint_shown: bool = False
+    check_updates: bool = True
+    skipped_version: str = ""
 
 
 @dataclass
@@ -183,6 +185,7 @@ class RuntimeState:
     slideshow_current: str = ""
     slideshow_changed_at: float = 0.0
     last_auto_theme: str = ""
+    last_update_check: float = 0.0
 
 
 @dataclass

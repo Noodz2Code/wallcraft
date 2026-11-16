@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QCloseEvent, QIcon
+from PySide6.QtGui import QCloseEvent, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -32,7 +32,7 @@ from .pages.settings import SettingsPage
 from .pages.slideshow import SlideshowPage
 from .pages.theme import ThemePage
 from .pages.timeofday import TimeOfDayPage
-from .widgets import ElidedLabel, ThumbLabel, icon_button, label
+from .widgets import ElidedLabel, ThumbLabel, button, icon_button, label
 
 if TYPE_CHECKING:
     from .context import AppContext
@@ -165,7 +165,12 @@ class MainWindow(QMainWindow):
         brand.addWidget(label(APP_NAME, "appTitle"))
         brand.addStretch(1)
         side.addLayout(brand)
-        side.addSpacing(14)
+        self._update_btn = button("Update available", primary=True)
+        self._update_btn.setVisible(False)
+        self._update_btn.clicked.connect(self.open_update)
+        side.addSpacing(6)
+        side.addWidget(self._update_btn)
+        side.addSpacing(8)
         self._nav = QListWidget()
         self._nav.setObjectName("nav")
         self._nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -188,6 +193,34 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         ctx.controller.message.connect(lambda text: self.statusBar().showMessage(text, 6000))
+        refresh = QShortcut(QKeySequence(Qt.Key.Key_F5), self)
+        refresh.activated.connect(ctx.refresh_all)
+
+        if ctx.updates is not None:
+            ctx.updates.available.connect(self._on_update_available)
+            ctx.updates.up_to_date.connect(lambda _r, manual: manual and self._report_update())
+            ctx.updates.failed.connect(lambda _e, manual: manual and self._report_update())
+
+    # Updates ------------------------------------------------------------------------- #
+    def _on_update_available(self, release, manual: bool) -> None:
+        self._update_btn.setText(f"Update to {release.version}")
+        self._update_btn.setToolTip(f"Wallcraft {release.version} is available. Click to see what's new.")
+        self._update_btn.setVisible(True)
+        if manual:
+            self._report_update()
+
+    def _report_update(self) -> None:
+        from .update_dialog import show_update_result
+
+        if self._ctx.updates is not None:
+            show_update_result(self if self.isVisible() else None, self._ctx.updates)
+
+    def open_update(self) -> None:
+        from .update_dialog import UpdateDialog
+
+        u = self._ctx.updates
+        if u is not None and u.latest is not None:
+            UpdateDialog(u.latest, u, self).exec()
 
     def show_and_raise(self) -> None:
         if self.isMinimized():

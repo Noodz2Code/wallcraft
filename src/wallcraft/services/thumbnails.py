@@ -119,6 +119,10 @@ class ThumbnailCache(QObject):
         while len(self._memory) > MEMORY_LIMIT:
             self._memory.popitem(last=False)
 
+    def retry_failed(self) -> None:
+        """Try again for files whose thumbnail couldn't be made (e.g. they were still being copied)."""
+        self._failed.clear()
+
     def clear(self) -> None:
         self._memory.clear()
         self._failed.clear()

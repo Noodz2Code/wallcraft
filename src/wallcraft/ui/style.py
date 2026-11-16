@@ -308,6 +308,18 @@ def paint_icon(p: QPainter, rect: QRectF, name: str, color: QColor, fill: QColor
         for pt in pts[1:]:
             path.lineTo(QPointF(*pt))
         p.drawPath(path)
+    elif name == "refresh":
+        # Open circle (gap at the upper right) with an arrowhead on its leading end.
+        ring = QRectF(4.5, 4.5, 11, 11)
+        arc = QPainterPath()
+        arc.arcMoveTo(ring, 40)
+        arc.arcTo(ring, 40, 290)
+        p.drawPath(arc)
+        head = QPainterPath()
+        head.moveTo(QPointF(15.6, 3.6))
+        head.lineTo(QPointF(14.4, 7.3))
+        head.lineTo(QPointF(10.7, 6.2))
+        p.drawPath(head)
     elif name == "star":
         if fill is not None:
             p.setPen(QPen(fill, 1.2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
@@ -347,7 +359,7 @@ class _IconEngine(QIconEngine):
 
 
 def icon(name: str, role: str = "text", on_fill: str | None = None) -> QIcon:
-    """Themed icon: ``close``, ``plus``, ``chevron-left``, ``chevron-right`` or ``star``.
+    """Themed icon: ``close``, ``plus``, ``chevron-left``, ``chevron-right``, ``refresh`` or ``star``.
 
     ``role`` is the colour token for the stroke; ``on_fill`` fills the shape in that token
     when a checkable button is checked (e.g. a filled star for favourites).

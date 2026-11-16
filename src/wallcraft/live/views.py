@@ -173,10 +173,10 @@ class LiveWindow(QWidget):
         self._view.set_audio(enabled, volume)
 
     def shutdown(self) -> None:
+        """Stop playback and hide. The owner releases the window (no deleteLater, see QtPlayer)."""
         self._playing = False
         self._view.shutdown()
         self.hide()
-        self.deleteLater()
 
 
 class QtPlayer(QObject):
@@ -195,8 +195,9 @@ class QtPlayer(QObject):
         super().__init__(parent)
         self.item = item
         self._embedded = embedded
-        self._win = LiveWindow(item, embedded=embedded, title=title)
+        self._win = LiveWindow(item, embedded=embedded, title=title)  # owned by this object
         self._win.set_fit(fit)
+        self._closed = False
 
     @property
     def hwnd(self) -> int | None:
@@ -207,7 +208,7 @@ class QtPlayer(QObject):
         return self._win.playing
 
     def alive(self) -> bool:
-        return True
+        return not self._closed
 
     def start(self) -> None:
         if self._embedded:
@@ -215,7 +216,7 @@ class QtPlayer(QObject):
         else:
             self._win.resize(960, 540)
             self._win.show()
-        QTimer.singleShot(0, self.ready.emit)
+        QTimer.singleShot(0, self, self.ready.emit)
 
     def show_embedded(self) -> None:
         self._win.show()
@@ -233,7 +234,9 @@ class QtPlayer(QObject):
         self._win.set_audio(enabled, volume)
 
     def shutdown(self) -> None:
+        self._closed = True
         self._win.shutdown()
+        self._win.close()
 
     def wait_closed(self, timeout_ms: int = 0) -> None:
         pass

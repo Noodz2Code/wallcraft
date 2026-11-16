@@ -34,6 +34,10 @@ class LiveHost(QObject):
         self._backend = backend
         self._players: dict[str, MpvPlayer | QtPlayer] = {}
         self._attached: set[str] = set()
+        # Players that were closed but whose mpv process may still be exiting. They have no Qt
+        # parent: Python owns them, and they are released once the process is gone. (Mixing a Qt
+        # parent with deleteLater() let a quitting app delete the same player twice and crash.)
+        self._retired: list[MpvPlayer | QtPlayer] = []
         self._assign: dict[str, MediaItem] = {}
         self._monitors: dict[str, Monitor] = {}
         self._actions: dict[str, RuleAction] = {}
@@ -97,15 +101,25 @@ class LiveHost(QObject):
         self._update_audio()
 
     def stop_all(self, wait: bool = False) -> None:
-        players = list(self._players.values())
         self._assign = {}
         self._reconcile()
         if wait:
-            for p in players:
+            for p in self._retired:
                 p.wait_closed()
+            self._release_retired()
+
+    def restart_all(self) -> None:
+        """Close every player and start them again, forgetting earlier failures."""
+        self._failures.clear()
+        self._qt_only.clear()
+        self.error = ""
+        for mid in list(self._players):
+            self._drop(mid)
+        self._reconcile()
 
     def check_health(self) -> None:
         """Recreate players that crashed or lost their place on the desktop."""
+        self._release_retired()
         broken = []
         for mid in list(self._attached):
             player = self._players.get(mid)
@@ -164,10 +178,10 @@ class LiveHost(QObject):
             player: MpvPlayer | QtPlayer = MpvPlayer(
                 self._mpv, item, self._fit, self._muted, self._volume, embedded,
                 find_window=self._backend.find_process_window,
-                adopt=self._backend.adopt_child_process, parent=self,
+                adopt=self._backend.adopt_child_process,
             )
         else:
-            player = QtPlayer(item, self._fit, embedded, f"Live wallpaper preview - {mon.name}", parent=self)
+            player = QtPlayer(item, self._fit, embedded, f"Live wallpaper preview - {mon.name}")
         player.ready.connect(partial(self._on_ready, mid, player))
         player.failed.connect(partial(self._on_failed, mid, player))
         player.exited.connect(partial(self._on_failed, mid, player, "The player stopped unexpectedly."))
@@ -188,7 +202,7 @@ class LiveHost(QObject):
             player.show_embedded()
             self._backend.ensure_live_window(hwnd, mon)
             # Some players resize their window once the video loads; re-check shortly after.
-            QTimer.singleShot(1500, self.check_health)
+            QTimer.singleShot(1500, self, self.check_health)
         self._attached.add(mid)
         self._failures[mid] = 0
         self.error = ""
@@ -216,7 +230,12 @@ class LiveHost(QObject):
         self._attached.discard(mid)
         if player is not None:
             player.shutdown()
-            QTimer.singleShot(3000, player.deleteLater)  # give mpv time to exit first
+            self._retired.append(player)
+
+    def _release_retired(self) -> None:
+        """Drop closed players whose process has exited. Called from timers only, never from a
+        player's own signal, so a player is never destroyed while one of its methods is running."""
+        self._retired = [p for p in self._retired if p.alive()]
 
     def _apply_actions(self) -> None:
         for mid in self._attached:

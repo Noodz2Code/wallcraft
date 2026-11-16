@@ -57,7 +57,7 @@
 
 **Performance and battery rules**
 
-Live wallpapers can pause (freeze the frame) or stop (unload the video and show its still image) when:
+Live wallpapers can pause (freeze the frame) or stop (unload the video so your static wallpaper shows) when:
 - the laptop is on battery, below a battery percentage you choose, or battery saver is on
 - an app is fullscreen, such as a game, video or presentation (only on that monitor)
 - a window is maximized (only on that monitor)
@@ -66,6 +66,8 @@ Live wallpapers can pause (freeze the frame) or stop (unload the video and show 
 When several rules match, the strongest action wins. You can also pause from the tray at any time.
 
 **Everyday comforts**
+- **Refresh** (button, F5 or tray) re-applies every wallpaper if something looks wrong
+- **Update checks**: a daily check (optional) and a *Check for updates* button. New versions show their release notes and download the right file for your install
 - Tray icon with next/previous, pause and mode switching
 - Start with Windows (no admin rights needed)
 - Single instance: launching Wallcraft again just brings the window forward
