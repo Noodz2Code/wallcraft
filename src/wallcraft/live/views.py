@@ -132,11 +132,30 @@ class _AnimatedImageView(QWidget):
         self._movie.stop()
 
 
+# A window the platform turns into part of the desktop (Linux X11, macOS): borderless, kept at
+# the bottom, never focused, and transparent to the mouse so desktop clicks go through.
+SURFACE_FLAGS = (Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnBottomHint
+                 | Qt.WindowType.WindowDoesNotAcceptFocus | Qt.WindowType.WindowTransparentForInput)
+
+
+class DesktopSurface(QWidget):
+    """Empty black desktop-level window that an external player (mpv --wid) draws into."""
+
+    def __init__(self, title: str = "Wallcraft live wallpaper") -> None:
+        super().__init__(None, SURFACE_FLAGS)
+        self.setWindowTitle(title)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        _black(self)
+
+
 class LiveWindow(QWidget):
     """A borderless window showing one live wallpaper on one monitor."""
 
-    def __init__(self, item: MediaItem, embedded: bool, title: str = "") -> None:
-        if embedded:
+    def __init__(self, item: MediaItem, embedded: bool, title: str = "", surface: bool = False) -> None:
+        if surface:
+            flags = SURFACE_FLAGS
+        elif embedded:
             flags = (Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool
                      | Qt.WindowType.WindowDoesNotAcceptFocus)
         else:
@@ -191,11 +210,11 @@ class QtPlayer(QObject):
     exited = Signal()
 
     def __init__(self, item: MediaItem, fit: FitMode, embedded: bool, title: str,
-                 parent: QObject | None = None) -> None:
+                 parent: QObject | None = None, surface: bool = False) -> None:
         super().__init__(parent)
         self.item = item
-        self._embedded = embedded
-        self._win = LiveWindow(item, embedded=embedded, title=title)  # owned by this object
+        self._embedded = embedded or surface
+        self._win = LiveWindow(item, embedded=embedded, title=title, surface=surface)  # owned by this object
         self._win.set_fit(fit)
         self._closed = False
 
@@ -220,6 +239,10 @@ class QtPlayer(QObject):
 
     def show_embedded(self) -> None:
         self._win.show()
+
+    def place(self, rect) -> None:
+        """Position the window (Qt device-independent coordinates)."""
+        self._win.setGeometry(rect)
 
     def play(self) -> None:
         self._win.play()

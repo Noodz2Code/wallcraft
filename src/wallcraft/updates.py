@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 import sys
 import urllib.error
@@ -42,9 +43,14 @@ def is_newer(latest: str, current: str = __version__) -> bool:
 
 
 def install_kind() -> str:
-    """How this copy was installed: "installer", "portable" (single exe), "zip" or "source"."""
+    """How this copy was installed: "installer", "portable" or "zip" (Windows), "appimage" or
+    "linux-tar" (Linux), "macos-arm64" or "macos-intel" (macOS), or "source"."""
     if not getattr(sys, "frozen", False):
         return "source"
+    if sys.platform == "darwin":
+        return "macos-arm64" if platform.machine().lower() in ("arm64", "aarch64") else "macos-intel"
+    if sys.platform.startswith("linux"):
+        return "appimage" if os.environ.get("APPIMAGE") else "linux-tar"
     exe_dir = Path(sys.executable).resolve().parent
     meipass = Path(getattr(sys, "_MEIPASS", exe_dir)).resolve()
     if meipass != exe_dir and not str(meipass).startswith(str(exe_dir)):
@@ -53,6 +59,18 @@ def install_kind() -> str:
     if os.environ.get("LOCALAPPDATA") and str(exe_dir).lower().startswith(str(programs).lower()):
         return "installer"
     return "zip"
+
+
+# Release file name endings, as produced by .github/workflows/release.yml.
+DOWNLOAD_SUFFIX = {
+    "installer": "-Setup.exe",
+    "portable": "-portable.exe",
+    "zip": "-win64.zip",
+    "appimage": "-x86_64.AppImage",
+    "linux-tar": "-linux-x86_64.tar.gz",
+    "macos-arm64": "-macos-arm64.dmg",
+    "macos-intel": "-macos-intel.dmg",
+}
 
 
 @dataclass(frozen=True)
@@ -66,7 +84,7 @@ class Release:
 
     def download_url(self, kind: str) -> str:
         """Best download for this install type, falling back to the release page."""
-        suffix = {"installer": "-Setup.exe", "portable": "-portable.exe", "zip": "-win64.zip"}.get(kind)
+        suffix = DOWNLOAD_SUFFIX.get(kind)
         if suffix:
             for name, url in self.assets.items():
                 if name.endswith(suffix):

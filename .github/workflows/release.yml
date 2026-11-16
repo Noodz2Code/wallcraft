@@ -1,10 +1,11 @@
 name: Release
 
-# Push a tag like v0.1.0 to build and publish a GitHub release with:
-#   Wallcraft-<version>-Setup.exe     installer (per-user, no admin needed)
-#   Wallcraft-<version>-portable.exe  single-file portable build
-#   Wallcraft-<version>-win64.zip     unpacked folder build
+# Push a tag like v0.1.6 to build on every platform and publish one GitHub release with:
+#   Windows  Wallcraft-<v>-Setup.exe, Wallcraft-<v>-portable.exe, Wallcraft-<v>-win64.zip
+#   Linux    Wallcraft-<v>-x86_64.AppImage, Wallcraft-<v>-linux-x86_64.tar.gz
+#   macOS    Wallcraft-<v>-macos-arm64.dmg, Wallcraft-<v>-macos-intel.dmg   (experimental)
 #   SHA256SUMS.txt
+# macOS is experimental: if a Mac build fails, the release is still published without it.
 
 on:
   push:
@@ -14,46 +15,47 @@ on:
 permissions:
   contents: write
 
+env:
+  QT_QPA_PLATFORM: offscreen  # tests and smoke tests run without a display
+
 jobs:
-  release:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tag matches version
+        id: v
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/wallcraft/__init__.py)
+          if [ "${{ github.ref_type }}" = "tag" ] && [ "${{ github.ref_name }}" != "v$v" ]; then
+            echo "::error::Tag ${{ github.ref_name }} does not match __version__ $v"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: requirements*.txt
-
       - run: python -m pip install -r requirements-dev.txt
-
-      - name: Check tag matches version
-        id: version
-        shell: pwsh
-        run: |
-          $v = (Select-String -Path src\wallcraft\__init__.py -Pattern '__version__ = "(.+)"').Matches[0].Groups[1].Value
-          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$v") {
-            throw "Tag ${{ github.ref_name }} does not match __version__ $v"
-          }
-          "version=$v" >> $env:GITHUB_OUTPUT
-
       - name: Test
-        env:
-          QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q
-
       - name: Download mpv (live wallpaper player)
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: python scripts/fetch_mpv.py
-
       - name: Build portable exe
         env:
           WALLCRAFT_ONEFILE: "1"
           WALLCRAFT_REQUIRE_MPV: "1"
         run: python -m PyInstaller --noconfirm --clean wallcraft.spec
-
       - name: Smoke-test the packaged exe
         shell: pwsh
         run: |
@@ -61,40 +63,127 @@ jobs:
           $p = Start-Process -FilePath .\dist\Wallcraft.exe -ArgumentList "--smoke-test" -Wait -PassThru
           Get-Content "$env:WALLCRAFT_HOME\logs\wallcraft.log" -ErrorAction SilentlyContinue
           if ($p.ExitCode -ne 0) { throw "Smoke test failed with exit code $($p.ExitCode)" }
-
       - name: Build folder version
         env:
           WALLCRAFT_ONEFILE: "0"
           WALLCRAFT_REQUIRE_MPV: "1"
         run: python -m PyInstaller --noconfirm wallcraft.spec
-
       - name: Install Inno Setup
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
-
       - name: Build installer
         shell: pwsh
-        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\wallcraft.iss'
-
-      - name: Collect release files
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ needs.version.outputs.version }}" installer\wallcraft.iss'
+      - name: Collect files
         shell: pwsh
         run: |
-          $v = "${{ steps.version.outputs.version }}"
+          $v = "${{ needs.version.outputs.version }}"
           New-Item -ItemType Directory -Force release | Out-Null
           Copy-Item dist\Wallcraft.exe "release\Wallcraft-$v-portable.exe"
           Copy-Item "dist\Wallcraft-$v-Setup.exe" release\
           Compress-Archive -Path dist\Wallcraft\* -DestinationPath "release\Wallcraft-$v-win64.zip"
-          Get-ChildItem release -File | Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" } |
-            Set-Content release\SHA256SUMS.txt -Encoding ascii
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: release/*
+          retention-days: 3
 
+  linux:
+    needs: version
+    # Built on the oldest supported Ubuntu so the download runs on older distributions too.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - name: Install Qt system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3 \
+            libpulse0 libxcb-cursor0
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Test
+        run: python -m pytest -q
+      - name: Build
+        env:
+          WALLCRAFT_ONEFILE: "0"
+          WALLCRAFT_REQUIRE_XCB_CURSOR: "1"
+        run: python -m PyInstaller --noconfirm --clean wallcraft.spec
+      - name: Smoke-test the packaged app
+        run: |
+          export WALLCRAFT_HOME="$RUNNER_TEMP/wallcraft-home"
+          ./dist/Wallcraft/Wallcraft --smoke-test || { cat "$WALLCRAFT_HOME/logs/wallcraft.log"; exit 1; }
+      - name: Build AppImage and tar.gz
+        run: scripts/build_appimage.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: |
+            dist/*.AppImage
+            dist/*.tar.gz
+          retention-days: 3
+
+  macos:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15        # Apple Silicon
+          - runner: macos-15-intel  # Intel
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: true  # experimental platform: never block the release
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: python -m pip install -r requirements-dev.txt
+      - name: Test
+        run: python -m pytest -q
+      - name: Build app bundle
+        run: python -m PyInstaller --noconfirm --clean wallcraft.spec
+      - name: Smoke-test the packaged app
+        run: |
+          export WALLCRAFT_HOME="$RUNNER_TEMP/wallcraft-home"
+          ./dist/Wallcraft.app/Contents/MacOS/Wallcraft --smoke-test || { cat "$WALLCRAFT_HOME/logs/wallcraft.log"; exit 1; }
+      - name: Build disk image
+        run: scripts/build_macos.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-macos-${{ matrix.runner }}
+          path: dist/*.dmg
+          retention-days: 3
+
+  publish:
+    needs: [version, windows, linux, macos]
+    # Publish when Windows and Linux built, even if an (experimental) Mac build failed.
+    if: ${{ !cancelled() && needs.windows.result == 'success' && needs.linux.result == 'success' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Checksums
+        working-directory: release
+        run: |
+          ls -la
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - uses: softprops/action-gh-release@v3
         with:
-          name: Wallcraft ${{ steps.version.outputs.version }}
+          name: Wallcraft ${{ needs.version.outputs.version }}
           # Explicit tag so a manual "Run workflow" (which runs on a branch) also works:
           # it creates a draft release whose tag is created when you publish it.
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: v${{ needs.version.outputs.version }}
           target_commitish: ${{ github.sha }}
           files: release/*
           generate_release_notes: true

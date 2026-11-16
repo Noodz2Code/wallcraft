@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Wallcraft
+GenericName=Wallpaper Manager
+Comment=Live wallpapers, time-of-day switching and theme sync
+Exec=wallcraft
+Icon=wallcraft
+Terminal=false
+Categories=Utility;GTK;Qt;
+Keywords=wallpaper;background;desktop;live;theme;dark mode;
+StartupWMClass=Wallcraft

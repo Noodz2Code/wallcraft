@@ -1,9 +1,9 @@
 """Filesystem locations used by Wallcraft.
 
-Default locations on Windows:
-    config:  %APPDATA%\\Wallcraft\\config.json
-    cache:   %LOCALAPPDATA%\\Wallcraft\\cache
-    logs:    %LOCALAPPDATA%\\Wallcraft\\logs
+Default locations:
+    Windows  config %APPDATA%\\Wallcraft, cache and logs %LOCALAPPDATA%\\Wallcraft
+    Linux    config ~/.config/Wallcraft, cache and logs ~/.cache/Wallcraft (XDG variables respected)
+    macOS    config ~/Library/Application Support/Wallcraft, cache and logs ~/Library/Caches/Wallcraft
 
 Portable mode: if a folder named ``wallcraft-data`` sits next to the executable,
 everything is stored there instead. ``WALLCRAFT_HOME`` overrides both.
@@ -25,7 +25,9 @@ def _override_home() -> Path | None:
     if env:
         return Path(env)
     if getattr(sys, "frozen", False):
-        portable = Path(sys.executable).resolve().parent / PORTABLE_DIR_NAME
+        # An AppImage runs from a temporary mount, so look next to the .AppImage file itself.
+        base = Path(os.environ["APPIMAGE"]).parent if os.environ.get("APPIMAGE") else Path(sys.executable).resolve().parent
+        portable = base / PORTABLE_DIR_NAME
         if portable.is_dir():
             return portable
     return None
@@ -41,6 +43,8 @@ def config_dir() -> Path:
         return home
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Application Support"
     else:
         base = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
     return base / APP_NAME
@@ -52,6 +56,8 @@ def data_dir() -> Path:
         return home
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
+    elif sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches"
     else:
         base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
     return base / APP_NAME

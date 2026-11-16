@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 from .. import APP_NAME
 from ..config import Mode
 from ..library import file_tag
+from ..osinfo import SYSTEM_NAME
 from ..paths import resource
 from .pages.library import LibraryPage
 from .pages.performance import PerformancePage
@@ -126,7 +127,7 @@ class NowShowing(QFrame):
         def paths(layer: dict[str, str]) -> list[str]:
             return [p for p in (layer.get(m.id, "") for m in c.monitors) if p]
 
-        self._static.set_paths(paths(c.current_static), "Not set", "Windows keeps its own wallpaper")
+        self._static.set_paths(paths(c.current_static), "Not set", f"{SYSTEM_NAME} keeps its own wallpaper")
         self._animated.set_paths(paths(c.current_live), "None")
         self._animated.set_status(c.live_status() if c.live.has_assignments else "")
         self._mode.blockSignals(True)

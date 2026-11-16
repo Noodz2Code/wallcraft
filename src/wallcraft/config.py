@@ -35,7 +35,7 @@ class Mode(str, Enum):
             Mode.MANUAL: "Manual",
             Mode.SLIDESHOW: "Slideshow",
             Mode.TIME_OF_DAY: "Time of day",
-            Mode.THEME: "Follow Windows theme",
+            Mode.THEME: "Follow system theme",
         }[self]
 
 

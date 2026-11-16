@@ -45,6 +45,24 @@ def test_build_args_stretch_unmuted_preview():
     assert "--geometry=960x540" in args and "--window-minimized=yes" not in args
 
 
+def test_build_args_draw_into_our_window():
+    args = build_args("a.mp4", "/tmp/s", FitMode.FILL, muted=True, volume=50, embedded=True,
+                      supported=frozenset(), wid=0x3a00007)
+    assert "--wid=60817415" in args
+    assert "--window-minimized=yes" not in args and "--geometry=960x540" not in args
+
+
+def test_mpvpaper_args():
+    from wallcraft.live.mpv import mpvpaper_args
+
+    args = mpvpaper_args("/v/a b.mp4", "/tmp/s.sock", FitMode.FILL, muted=False, volume=30, output="DP-1",
+                         supported=frozenset())
+    assert args[0] == "-o" and args[2:] == ["DP-1", "/v/a b.mp4"]
+    opts = args[1].split()
+    assert "input-ipc-server=/tmp/s.sock" in opts and "loop-file=inf" in opts and "panscan=1.0" in opts
+    assert "aid=no" not in opts and "volume=30" in opts
+
+
 @pytest.fixture
 def fake_mpv(tmp_path, monkeypatch):
     if sys.platform == "win32":

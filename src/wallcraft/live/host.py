@@ -12,13 +12,13 @@ import logging
 import os
 from functools import partial
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QRect, QTimer, Signal
 
 from ..config import FitMode, RuleAction
 from ..library import Kind, MediaItem
 from ..platform.base import Backend, Monitor
 from .mpv import MpvPlayer, find_mpv
-from .views import QtPlayer
+from .views import DesktopSurface, QtPlayer
 
 log = logging.getLogger(__name__)
 
@@ -147,7 +147,13 @@ class LiveHost(QObject):
                     or self._actions.get(mid) is RuleAction.STOP):
                 self._drop(mid)
 
+        strategy = self._backend.live_strategy
+        if strategy == "none" and self._assign:
+            # This system can't show animated wallpapers (e.g. GNOME on Wayland); say why.
+            self.error = self._backend.live_unsupported_reason or "Animated wallpapers aren't supported here."
         for mid, item in self._assign.items():
+            if strategy == "none":
+                break
             if mid in self._players or self._actions.get(mid) is RuleAction.STOP:
                 continue
             mon = self._monitors.get(mid)
@@ -173,15 +179,25 @@ class LiveHost(QObject):
         return os.path.splitext(item.path)[1].lower() == ".gif"
 
     def _create(self, mid: str, item: MediaItem, mon: Monitor) -> None:
-        embedded = self._backend.supports_desktop_embedding
-        if self._use_mpv(item):
-            player: MpvPlayer | QtPlayer = MpvPlayer(
-                self._mpv, item, self._fit, self._muted, self._volume, embedded,
-                find_window=self._backend.find_process_window,
-                adopt=self._backend.adopt_child_process,
-            )
+        strategy = self._backend.live_strategy
+        embedded = strategy in ("attach", "surface", "external")
+        common = dict(find_window=self._backend.find_process_window, adopt=self._backend.adopt_child_process)
+        player: MpvPlayer | QtPlayer
+        if strategy == "external":
+            # A helper (mpvpaper) draws on the desktop layer itself; we only control it over IPC.
+            player = MpvPlayer(self._mpv or "", item, self._fit, self._muted, self._volume, True,
+                               launcher=self._backend.live_external_program(), output=mon.device, **common)
+        elif strategy == "surface" and self._backend.mpv_embeds_by_wid and self._use_mpv(item):
+            # Linux X11: our desktop-level window, mpv draws into it.
+            player = MpvPlayer(self._mpv, item, self._fit, self._muted, self._volume, True,
+                               surface=DesktopSurface(f"Live wallpaper - {mon.name}"), **common)
+        elif strategy == "attach" and self._use_mpv(item):
+            player = MpvPlayer(self._mpv, item, self._fit, self._muted, self._volume, True, **common)
+        elif strategy == "preview" and self._use_mpv(item):
+            player = MpvPlayer(self._mpv, item, self._fit, self._muted, self._volume, False, **common)
         else:
-            player = QtPlayer(item, self._fit, embedded, f"Live wallpaper preview - {mon.name}")
+            player = QtPlayer(item, self._fit, embedded and strategy == "attach",
+                              f"Live wallpaper preview - {mon.name}", surface=strategy == "surface")
         player.ready.connect(partial(self._on_ready, mid, player))
         player.failed.connect(partial(self._on_failed, mid, player))
         player.exited.connect(partial(self._on_failed, mid, player, "The player stopped unexpectedly."))
@@ -194,11 +210,14 @@ class LiveHost(QObject):
         mon = self._monitors.get(mid)
         if mon is None:
             return
-        if self._backend.supports_desktop_embedding:
+        strategy = self._backend.live_strategy
+        if strategy in ("attach", "surface"):
             hwnd = player.hwnd
             if not hwnd or not self._backend.attach_live_window(hwnd, mon):
                 self._on_failed(mid, player, "Could not place the wallpaper behind the desktop icons.")
                 return
+            if strategy == "surface" and mon.logical:
+                player.place(QRect(*mon.logical))
             player.show_embedded()
             self._backend.ensure_live_window(hwnd, mon)
             # Some players resize their window once the video loads; re-check shortly after.
@@ -215,7 +234,7 @@ class LiveHost(QObject):
             return
         log.error("Live wallpaper on %s failed: %s", mid, reason)
         self._drop(mid)
-        if isinstance(player, MpvPlayer):
+        if isinstance(player, MpvPlayer) and self._backend.live_strategy != "external":
             # Retry this file with the built-in player before giving up.
             self._qt_only.add(player.item.path)
         else:

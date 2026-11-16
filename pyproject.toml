@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wallcraft"
 dynamic = ["version"]
-description = "Wallpaper manager for Windows with live video wallpapers, time-of-day switching and theme sync"
+description = "Wallpaper manager for Windows, Linux and macOS with live video wallpapers, time-of-day switching and theme sync"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -19,10 +19,16 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows :: Windows 10",
     "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Topic :: Desktop Environment",
 ]
-dependencies = ["PySide6>=6.6,<7"]
+dependencies = [
+  "PySide6>=6.6,<7",
+  "pyobjc-framework-Cocoa>=10; sys_platform == 'darwin'",
+  "pyobjc-framework-Quartz>=10; sys_platform == 'darwin'",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6", "pyinstaller>=6.6", "pillow>=10"]

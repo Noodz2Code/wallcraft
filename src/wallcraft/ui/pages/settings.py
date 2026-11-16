@@ -12,6 +12,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QMessageBox
 
 from ... import APP_NAME, REPO_URL, __version__
 from ...config import FitMode
+from ...osinfo import IS_WINDOWS
 from ...paths import config_dir, is_portable, log_dir
 from .. import style
 from ..widgets import Card, Page, button, label
@@ -28,7 +29,7 @@ class SettingsPage(Page):
         self._ctx = ctx
 
         startup = Card("Startup and tray")
-        self._autostart = QCheckBox("Start Wallcraft when I sign in to Windows")
+        self._autostart = QCheckBox("Start Wallcraft when I sign in")
         self._minimized = QCheckBox("Start minimized to the tray")
         self._close_to_tray = QCheckBox("Keep running in the tray when the window is closed")
         for w in (self._autostart, self._minimized, self._close_to_tray):
@@ -48,9 +49,12 @@ class SettingsPage(Page):
         row.addStretch(1)
         display.body.addLayout(row)
         self._jpeg = QCheckBox("Keep JPEG wallpapers at full quality")
+        jpeg_note = label("Windows normally re-compresses JPEG wallpapers to 85% quality. Takes "
+                          "effect the next time a wallpaper is set.", "small", wrap=True)
         display.body.addWidget(self._jpeg)
-        display.body.addWidget(label("Windows normally re-compresses JPEG wallpapers to 85% quality. Takes "
-                                     "effect the next time a wallpaper is set.", "small", wrap=True))
+        display.body.addWidget(jpeg_note)
+        for w in (self._jpeg, jpeg_note):
+            w.setVisible(IS_WINDOWS)  # a Windows-only setting
         self.content.addWidget(display)
 
         data = Card("Data")

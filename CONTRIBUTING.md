@@ -5,9 +5,11 @@ Thanks for helping out! Bug reports, feature ideas, docs fixes and code are all 
 ## Reporting bugs
 
 Open an issue and include:
-- your Windows version (run `winver`) and number/arrangement of monitors
+- your system: Windows version (`winver`); Linux distribution, desktop (GNOME, KDE, XFCE…) and X11 or Wayland;
+  or macOS version. Plus the number and arrangement of monitors
 - what you did, what you expected and what happened
-- the log file: `%LOCALAPPDATA%\Wallcraft\logs\wallcraft.log` (start Wallcraft with `--debug` for more detail)
+- the log file (start Wallcraft with `--debug` for more detail): `%LOCALAPPDATA%\Wallcraft\logs\wallcraft.log`
+  on Windows, `~/.cache/Wallcraft/logs/wallcraft.log` on Linux, `~/Library/Caches/Wallcraft/logs/wallcraft.log` on macOS
 
 ## Development setup
 
@@ -18,8 +20,9 @@ pip install -r requirements-dev.txt
 python -m wallcraft --debug
 ```
 
-The app also runs on Linux/macOS using a development backend, which is handy for UI work.
-Anything touching the desktop itself (`src/wallcraft/platform/windows/`) has to be tested on Windows.
+Wallcraft runs on Windows, Linux and macOS, so you can work on the UI and engine on any of them.
+Code that touches the desktop itself (`src/wallcraft/platform/<os>/`) has to be tested on that system.
+macOS support is experimental: testers with a Mac are especially welcome.
 
 ## Before opening a pull request
 

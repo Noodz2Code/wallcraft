@@ -19,6 +19,10 @@ DOWNLOAD_LABELS = {
     "installer": "Download installer",
     "portable": "Download portable exe",
     "zip": "Download zip",
+    "appimage": "Download AppImage",
+    "linux-tar": "Download archive",
+    "macos-arm64": "Download for Mac",
+    "macos-intel": "Download for Mac",
 }
 
 
@@ -44,6 +48,13 @@ class UpdateDialog(QDialog):
             "installer": "Run the downloaded installer; it updates Wallcraft in place and keeps your settings.",
             "portable": "Replace your old Wallcraft exe with the downloaded one. Your settings are kept.",
             "zip": "Unpack the zip over your current Wallcraft folder. Your settings are kept.",
+            "appimage": "Replace your old AppImage with the downloaded one and make it executable. "
+                        "Your settings are kept.",
+            "linux-tar": "Unpack the archive over your current Wallcraft folder. Your settings are kept.",
+            "macos-arm64": "Open the downloaded disk image and drag Wallcraft to Applications, replacing the "
+                           "old version. Your settings are kept.",
+            "macos-intel": "Open the downloaded disk image and drag Wallcraft to Applications, replacing the "
+                           "old version. Your settings are kept.",
         }.get(kind, "You're running from source: update with git pull.")
         lay.addWidget(label(hint, "small", wrap=True))
 

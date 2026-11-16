@@ -12,9 +12,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QRadioButton,
     QTimeEdit,
+    QWidget,
 )
 
 from ...config import Appearance, Mode, ThemeSchedule
+from ...osinfo import IS_WINDOWS, SYSTEM_NAME
 from ..widgets import Card, ModeBanner, Page, WallpaperSlot, button, label
 
 if TYPE_CHECKING:
@@ -23,12 +25,12 @@ if TYPE_CHECKING:
 
 class ThemePage(Page):
     def __init__(self, ctx: AppContext) -> None:
-        super().__init__("Theme sync", "Pair wallpapers with Windows light and dark mode, "
-                                       "and switch the Windows theme on a schedule.")
+        super().__init__("Theme sync", "Pair wallpapers with light and dark mode, and switch the system "
+                                       "theme on a schedule.")
         self._ctx = ctx
         self.content.addWidget(ModeBanner(
             ctx, Mode.THEME,
-            "Follow-theme mode is off. Turn it on to swap wallpapers whenever Windows changes between "
+            "Follow-theme mode is off. Turn it on to swap wallpapers whenever the system changes between "
             "light and dark."))
 
         # Wallpapers ------------------------------------------------------------------ #
@@ -48,7 +50,7 @@ class ThemePage(Page):
         self.content.addWidget(walls)
 
         # Auto switch -------------------------------------------------------------------- #
-        auto = Card("Switch Windows theme automatically",
+        auto = Card("Switch the system theme automatically",
                     "Wallcraft switches only at the scheduled times, so you can still change the theme by "
                     "hand in between.")
         self._auto = QCheckBox("Switch between light and dark automatically")
@@ -72,14 +74,18 @@ class ThemePage(Page):
         custom_row.addWidget(self._dark_time)
         custom_row.addStretch(1)
         auto.body.addLayout(custom_row)
-        apply_row = QHBoxLayout()
+        # Only Windows has separate app and taskbar themes; elsewhere it's one switch.
+        apply_box = QWidget()
+        apply_row = QHBoxLayout(apply_box)
+        apply_row.setContentsMargins(0, 0, 0, 0)
         apply_row.addWidget(label("Apply to:"))
         self._apps = QCheckBox("Apps")
         self._system = QCheckBox("Windows (taskbar and Start)")
         apply_row.addWidget(self._apps)
         apply_row.addWidget(self._system)
         apply_row.addStretch(1)
-        auto.body.addLayout(apply_row)
+        apply_box.setVisible(IS_WINDOWS)
+        auto.body.addWidget(apply_box)
         now_row = QHBoxLayout()
         to_light = button("Switch to light now")
         to_light.clicked.connect(lambda: ctx.controller.set_os_theme("light"))
@@ -98,7 +104,7 @@ class ThemePage(Page):
         appearance = Card("Wallcraft appearance")
         row = QHBoxLayout()
         self._appearance = QComboBox()
-        for value, text in ((Appearance.SYSTEM, "Match Windows"), (Appearance.LIGHT, "Light"),
+        for value, text in ((Appearance.SYSTEM, "Match system"), (Appearance.LIGHT, "Light"),
                             (Appearance.DARK, "Dark")):
             self._appearance.addItem(text, value)
         row.addWidget(self._appearance)
@@ -178,6 +184,6 @@ class ThemePage(Page):
 
     def _update_os_state(self) -> None:
         theme = self._ctx.controller.os_theme
-        self._os_state.setText(f"Windows is in {theme} mode right now, so the {theme} wallpaper applies.")
+        self._os_state.setText(f"{SYSTEM_NAME} is in {theme} mode right now, so the {theme} wallpaper applies.")
         self._light.set_in_use(theme == "light")
         self._dark.set_in_use(theme == "dark")

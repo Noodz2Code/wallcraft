@@ -4,6 +4,33 @@ All notable changes to this project are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.6] - 2026-11-16
+
+### Added
+- **Linux support.** Static wallpapers, slideshow, time of day, theme sync, battery rules and start at login on
+  GNOME, KDE Plasma, XFCE, Cinnamon, MATE, LXQt, sway and Hyprland (plus `feh` on other X11 window managers).
+  - Animated wallpapers on X11 (Wallcraft's own desktop-level window, with mpv drawing into it when installed),
+    and on Wayland through `mpvpaper` (sway, Hyprland, KDE). GNOME on Wayland doesn't allow apps behind the
+    desktop; Wallcraft explains this instead of failing silently.
+  - Per-monitor wallpapers on XFCE, sway and Hyprland. Light/dark switching swaps GTK themes to their dark
+    sibling (e.g. Mint-Y-Aqua ↔ Mint-Y-Dark-Aqua).
+  - Battery from `/sys/class/power_supply`, power saver from power-profiles-daemon, lock screen from logind,
+    fullscreen and maximized windows from the window manager (X11).
+  - Downloads: an AppImage (bundles the `libxcb-cursor` library Qt needs, which distributions like Linux Mint
+    don't install) and a `.tar.gz`.
+- **macOS support (experimental).** Static wallpaper per screen (current Space), animated wallpapers in a
+  desktop-level window on every Space, dark mode switching, Low Power Mode, lock and fullscreen detection, and
+  start at login. Downloads for Apple Silicon and Intel Macs as `.dmg` disk images (not notarized yet; see the
+  README for the one-time "Open Anyway" step).
+- The update checker downloads the right file on every platform.
+
+### Changed
+- Wording no longer assumes Windows: "Follow system theme", "Start Wallcraft when I sign in", and so on.
+  Windows-only options (separate app/taskbar theme, JPEG quality) only appear on Windows.
+- Settings are stored in the standard place on each system (see the README).
+- The release workflow builds Windows, Linux and macOS in parallel and publishes one release. A failing
+  (experimental) Mac build no longer blocks a release.
+
 ## [0.1.5] - 2026-11-16
 
 ### Added

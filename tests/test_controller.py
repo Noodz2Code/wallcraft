@@ -8,7 +8,7 @@ from conftest import pump, wait_until
 
 pytest.importorskip("PySide6")
 
-from wallcraft.config import Mode, RuleAction  # noqa: E402
+from wallcraft.config import FitMode, Mode, RuleAction  # noqa: E402
 from wallcraft.platform.base import Backend, Monitor  # noqa: E402
 from wallcraft.rules import SystemState  # noqa: E402
 
@@ -158,6 +158,70 @@ def test_config_is_persisted(engine):
     ctl.set_wallpaper(files["b"])
     store.save_now()
     assert load_config(store.path).manual == {"*": files["b"]}
+
+
+class SurfaceBackend(FakeBackend):
+    """Like Linux X11 / macOS: Wallcraft's own window is turned into a desktop window."""
+
+    def __init__(self):
+        super().__init__([Monitor("m1", "Display 1", 0, 0, 2880, 1800, True, "eDP-1", (0, 0, 1440, 900))])
+        self.attached: list[int] = []
+
+    @property
+    def live_strategy(self):
+        return "surface"
+
+    def attach_live_window(self, hwnd, monitor):
+        self.attached.append(hwnd)
+        return True
+
+
+class NoLiveBackend(FakeBackend):
+    @property
+    def live_strategy(self):
+        return "none"
+
+    @property
+    def live_unsupported_reason(self):
+        return "GNOME on Wayland doesn't let apps draw behind the desktop."
+
+
+def test_surface_strategy_places_window_in_logical_coordinates(qapp, tmp_path):
+    from wallcraft.library import Kind, MediaItem
+    from wallcraft.live.host import LiveHost
+
+    clip = tmp_path / "clip.gif"
+    clip.write_bytes(b"GIF89a")
+    backend = SurfaceBackend()
+    host = LiveHost(backend)
+    host._mpv = None  # built-in player
+    host.set_assignments({"m1": MediaItem(str(clip), Kind.ANIMATED)}, backend.monitors, FitMode.FILL)
+    assert wait_until(lambda: host.state("m1") == "playing")
+    win = host._players["m1"]._win
+    assert backend.attached == [int(win.winId())]
+    assert win.geometry().getRect() == (0, 0, 1440, 900)  # Qt units, not the 2880x1800 physical size
+    host.stop_all(wait=True)
+
+
+def test_unsupported_live_shows_reason_and_keeps_static(qapp, wallcraft_home, tmp_path):
+    from wallcraft import paths
+    from wallcraft.controller import Controller
+    from wallcraft.services.config_store import ConfigStore
+    from wallcraft.services.library_service import LibraryService
+
+    img = make_image(tmp_path / "s.png")
+    vid = tmp_path / "v.mp4"
+    vid.write_bytes(b"\x00")
+    backend = NoLiveBackend()
+    store = ConfigStore(paths.config_file())
+    ctl = Controller(store, backend, LibraryService(store))
+    ctl.start()
+    ctl.set_wallpaper(img)
+    ctl.set_wallpaper(str(vid))
+    assert not ctl.live._players
+    assert "GNOME on Wayland" in ctl.live_status()
+    assert backend.static[-1][0] == "s.png"
+    ctl.shutdown()
 
 
 def static_calls(backend):

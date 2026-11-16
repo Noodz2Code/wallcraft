@@ -121,13 +121,16 @@ def option_name(arg: str) -> str:
 
 
 def build_args(path: str, ipc: str, fit: FitMode, muted: bool, volume: int, embedded: bool,
-               supported: frozenset[str]) -> list[str]:
+               supported: frozenset[str], wid: int = 0) -> list[str]:
+    """mpv command line. ``wid``: draw into that existing window (X11) instead of opening one."""
     args = list(CORE_OPTIONS)
     args.append(f"--input-ipc-server={ipc}")
     args += [f"--volume={max(0, min(100, volume))}", f"--mute={'yes' if muted else 'no'}"]
     if muted:
         args.append("--aid=no")  # don't decode audio at all while muted
-    if embedded:
+    if wid:
+        args.append(f"--wid={wid}")
+    elif embedded:
         args += EMBEDDED_OPTIONS
     else:
         args.append("--geometry=960x540")
@@ -136,6 +139,18 @@ def build_args(path: str, ipc: str, fit: FitMode, muted: bool, volume: int, embe
         args.append(f"--{name}={_option_value(value)}")
     args += ["--", path]
     return args
+
+
+def mpvpaper_args(path: str, ipc: str, fit: FitMode, muted: bool, volume: int, output: str,
+                  supported: frozenset[str]) -> list[str]:
+    """mpvpaper (Wayland layer-shell wallpaper) command line; mpv options go through -o."""
+    opts = ["loop-file=inf", "hwdec=auto-safe", "input-default-bindings=no", "osd-level=0",
+            "msg-level=all=warn", f"input-ipc-server={ipc}", f"volume={max(0, min(100, volume))}",
+            f"mute={'yes' if muted else 'no'}"]
+    if muted:
+        opts.append("aid=no")
+    opts += [f"{name}={_option_value(value)}" for name, value in FIT_PROPERTIES[fit].items()]
+    return ["-o", " ".join(opts), output or "*", path]
 
 
 def _option_value(value: object) -> str:
@@ -162,10 +177,16 @@ class MpvPlayer(QObject):
         find_window: Callable[[int], int | None],
         adopt: Callable[[int], None],
         parent: QObject | None = None,
+        surface=None,
+        launcher: str | None = None,
+        output: str = "",
     ) -> None:
         super().__init__(parent)
         self.item = item
         self._mpv = mpv
+        self._surface = surface      # DesktopSurface mpv draws into (--wid), Linux X11
+        self._launcher = launcher    # e.g. mpvpaper on Wayland; it draws the wallpaper itself
+        self._output = output
         self._fit = fit
         self._muted = muted
         self._volume = volume
@@ -212,11 +233,20 @@ class MpvPlayer(QObject):
 
     # Lifecycle -------------------------------------------------------------------- #
     def start(self) -> None:
-        args = build_args(self.item.path, self._ipc_arg, self._fit, self._muted, self._volume,
-                          self._embedded, supported_options(self._mpv))
-        log.info("Starting mpv for %s", self.item.path)
-        log.debug("mpv %s", " ".join(args))
-        self._proc.start(self._mpv, args)
+        if self._launcher:
+            program = self._launcher
+            args = mpvpaper_args(self.item.path, self._ipc_arg, self._fit, self._muted, self._volume,
+                                 self._output, frozenset())
+        else:
+            program = self._mpv
+            wid = int(self._surface.winId()) if self._surface is not None else 0
+            if wid:
+                self._hwnd = wid
+            args = build_args(self.item.path, self._ipc_arg, self._fit, self._muted, self._volume,
+                              self._embedded, supported_options(self._mpv), wid=wid)
+        log.info("Starting %s for %s", os.path.basename(program), self.item.path)
+        log.debug("%s %s", program, " ".join(args))
+        self._proc.start(program, args)
         if not self._proc.waitForStarted(5000):
             self.failed.emit(f"mpv did not start: {self._proc.errorString()}")
             return
@@ -229,10 +259,13 @@ class MpvPlayer(QObject):
             return  # _on_finished reports it
         if self._sock.state() == QLocalSocket.LocalSocketState.UnconnectedState:
             self._sock.connectToServer(self._server)
-        if self._embedded and self._hwnd is None:
+        # Only the Windows "attach" mode has to find mpv's own window; otherwise the window is
+        # ours (--wid) or the helper's (mpvpaper), and a working IPC connection means ready.
+        needs_window = self._embedded and self._surface is None and not self._launcher
+        if needs_window and self._hwnd is None:
             self._hwnd = self._find_window(int(self._proc.processId()))
         connected = self._sock.state() == QLocalSocket.LocalSocketState.ConnectedState
-        if connected and (self._hwnd is not None or not self._embedded):
+        if connected and (self._hwnd is not None or not needs_window):
             self._poll.stop()
             self._ready = True
             self.ready.emit()
@@ -242,13 +275,21 @@ class MpvPlayer(QObject):
             self.shutdown()
 
     def show_embedded(self) -> None:
-        """Nothing to do: the backend shows mpv's own window when it attaches it."""
+        """Show the surface mpv draws into; in "attach" mode the backend shows mpv's own window."""
+        if self._surface is not None:
+            self._surface.show()
+
+    def place(self, rect) -> None:
+        if self._surface is not None:
+            self._surface.setGeometry(rect)
 
     def shutdown(self) -> None:
         if self._closing:
             return
         self._closing = True
         self._poll.stop()
+        if self._surface is not None:
+            self._surface.hide()  # released together with this player once mpv has exited
         if self.alive():
             self._send(["quit"])
             QTimer.singleShot(1500, self, self._kill)

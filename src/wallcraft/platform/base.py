@@ -18,11 +18,34 @@ class Monitor:
     width: int
     height: int
     primary: bool = False
-    device: str = ""  # e.g. \\.\DISPLAY1
+    device: str = ""  # e.g. \\.\DISPLAY1, or the connector name (eDP-1) on Linux
+    # Geometry in Qt's device-independent coordinates. Set on Linux and macOS, where live
+    # wallpaper windows are positioned through Qt rather than with native calls.
+    logical: tuple[int, int, int, int] | None = None
 
     @property
     def rect(self) -> tuple[int, int, int, int]:
         return (self.x, self.y, self.width, self.height)
+
+
+def qt_monitors() -> list[Monitor]:
+    """Monitors as Qt sees them (id = screen name). Used by the Linux and macOS backends."""
+    from PySide6.QtGui import QGuiApplication
+
+    monitors = []
+    primary = QGuiApplication.primaryScreen()
+    screens = sorted(QGuiApplication.screens(), key=lambda s: (s != primary, s.geometry().x(), s.geometry().y()))
+    for i, screen in enumerate(screens):
+        g = screen.geometry()
+        r = screen.devicePixelRatio()
+        name = screen.name() or f"screen{i}"
+        monitors.append(Monitor(
+            id=name,
+            name=f"Display {i + 1}" + (" (primary)" if screen == primary else ""),
+            x=round(g.x() * r), y=round(g.y() * r), width=round(g.width() * r), height=round(g.height() * r),
+            primary=screen == primary, device=name, logical=(g.x(), g.y(), g.width(), g.height()),
+        ))
+    return monitors or [Monitor("screen0", "Display 1", 0, 0, 1920, 1080, True, "screen0", (0, 0, 1920, 1080))]
 
 
 class Backend(ABC):
@@ -51,6 +74,30 @@ class Backend(ABC):
 
     def system_state(self, monitors: list[Monitor]) -> SystemState:
         return SystemState()
+
+    # How live wallpapers are shown on this system:
+    #   "attach"   the player opens its own window and the backend moves it behind the icons (Windows)
+    #   "surface"  Wallcraft opens a window, the backend turns it into a desktop-level window, and the
+    #              player draws into it (Linux X11, macOS)
+    #   "external" a helper program draws the wallpaper itself (mpvpaper on Wayland)
+    #   "preview"  no desktop integration: show a normal preview window (development)
+    #   "none"     not possible here; ``live_unsupported_reason`` explains why
+    @property
+    def live_strategy(self) -> str:
+        return "attach" if self.supports_desktop_embedding else "preview"
+
+    @property
+    def live_unsupported_reason(self) -> str:
+        return ""
+
+    @property
+    def mpv_embeds_by_wid(self) -> bool:
+        """True if mpv can draw into a window Wallcraft created (``--wid``)."""
+        return False
+
+    def live_external_program(self) -> str | None:
+        """Helper used by the "external" strategy (e.g. mpvpaper)."""
+        return None
 
     # Live wallpaper embedding --------------------------------------------- #
     def attach_live_window(self, hwnd: int, monitor: Monitor) -> bool:

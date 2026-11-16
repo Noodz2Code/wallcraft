@@ -278,7 +278,7 @@ class DetailsPanel(QFrame):
             self._layer_hint.setText("Plays on top of your static wallpaper, which stays in place underneath.")
         else:
             self._apply.setText("Set as static wallpaper")
-            self._layer_hint.setText("Your regular Windows wallpaper. Animated wallpapers play on top of it.")
+            self._layer_hint.setText("Your regular desktop wallpaper. Animated wallpapers play on top of it.")
         self._name.setText(item.name)
         self._name.setToolTip(item.name)
         parts = []
@@ -306,7 +306,7 @@ class LibraryPage(QWidget):
         titles = QVBoxLayout()
         titles.setSpacing(4)
         titles.addWidget(label("Library", "h1"))
-        titles.addWidget(label("Static wallpapers are your regular Windows wallpaper. Animated ones play on top "
+        titles.addWidget(label("Static wallpapers are your regular desktop wallpaper. Animated ones play on top "
                                "of it. Double-click to apply.", "muted", wrap=True))
         head.addLayout(titles, 1)
         head.addSpacing(16)

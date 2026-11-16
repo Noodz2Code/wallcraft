@@ -19,6 +19,10 @@ RELEASE = {
         {"name": "Wallcraft-9.9.0-Setup.exe", "browser_download_url": "https://dl/setup.exe"},
         {"name": "Wallcraft-9.9.0-portable.exe", "browser_download_url": "https://dl/portable.exe"},
         {"name": "Wallcraft-9.9.0-win64.zip", "browser_download_url": "https://dl/win64.zip"},
+        {"name": "Wallcraft-9.9.0-x86_64.AppImage", "browser_download_url": "https://dl/app.AppImage"},
+        {"name": "Wallcraft-9.9.0-linux-x86_64.tar.gz", "browser_download_url": "https://dl/linux.tar.gz"},
+        {"name": "Wallcraft-9.9.0-macos-arm64.dmg", "browser_download_url": "https://dl/arm.dmg"},
+        {"name": "Wallcraft-9.9.0-macos-intel.dmg", "browser_download_url": "https://dl/intel.dmg"},
         {"name": "SHA256SUMS.txt", "browser_download_url": "https://dl/sums.txt"},
     ],
 }
@@ -49,6 +53,10 @@ def test_parse_release_and_download_choice():
     assert rel.download_url("installer") == "https://dl/setup.exe"
     assert rel.download_url("portable") == "https://dl/portable.exe"
     assert rel.download_url("zip") == "https://dl/win64.zip"
+    assert rel.download_url("appimage") == "https://dl/app.AppImage"
+    assert rel.download_url("linux-tar") == "https://dl/linux.tar.gz"
+    assert rel.download_url("macos-arm64") == "https://dl/arm.dmg"
+    assert rel.download_url("macos-intel") == "https://dl/intel.dmg"
     assert rel.download_url("source") == rel.page_url
     bare = parse_release({"tag_name": "v1.0.0", "html_url": "https://page"})
     assert bare.download_url("installer") == "https://page"  # no assets: fall back to the page

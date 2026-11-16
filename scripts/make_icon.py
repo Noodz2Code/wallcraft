@@ -91,6 +91,9 @@ def main() -> int:
         q = draw(n).convertToFormat(QImage.Format.Format_RGBA8888)
         frames.append(Image.frombuffer("RGBA", (n, n), bytes(q.constBits()), "raw", "RGBA", 0, 1))
     frames[-1].save(OUT / "icon.ico", format="ICO", sizes=[(n, n) for n in sizes], append_images=frames[:-1])
+    # macOS app icon (.icns) from the 512 px render; Pillow builds the smaller sizes itself.
+    q = big.convertToFormat(QImage.Format.Format_RGBA8888)
+    Image.frombuffer("RGBA", (512, 512), bytes(q.constBits()), "raw", "RGBA", 0, 1).save(OUT / "icon.icns", format="ICNS")
     print(f"Wrote icons to {OUT}")
     return 0
 
